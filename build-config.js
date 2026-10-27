@@ -1,7 +1,23 @@
 // Chạy tự động khi Vercel build (xem vercel.json).
-// Lấy địa chỉ + khóa CÔNG KHAI của Supabase từ Environment Variables
-// rồi ghi ra config.js cho trang web dùng.
+// 1) Chép các file trang web vào thư mục "public" (thư mục Vercel đưa lên mạng).
+// 2) Lấy địa chỉ + khóa CÔNG KHAI của Supabase từ Environment Variables
+//    rồi ghi ra public/config.js cho trang web dùng.
 const fs = require("fs");
+const path = require("path");
+
+const OUT = "public";
+const FILES = ["index.html", "styles.css", "app.js"];
+
+fs.rmSync(OUT, { recursive: true, force: true });
+fs.mkdirSync(OUT, { recursive: true });
+for (const f of FILES) {
+  if (!fs.existsSync(f)) {
+    console.error(`❌ Không thấy file ${f} trong repo. Hãy kiểm tra lại đã đẩy đủ file chưa.`);
+    process.exit(1);
+  }
+  fs.copyFileSync(f, path.join(OUT, f));
+}
+console.log(`✅ Đã chép ${FILES.join(", ")} vào ${OUT}/`);
 
 const pick = (...names) => {
   for (const n of names) {
@@ -19,7 +35,9 @@ const key = pick(
 
 if (!url || !key) {
   console.log("⚠️  Chưa thấy SUPABASE_URL / SUPABASE_ANON_KEY trong Environment Variables.");
-  console.log("    Giữ nguyên config.js hiện có.");
+  console.log("    Dùng config.js có sẵn trong repo.");
+  if (fs.existsSync("config.js")) fs.copyFileSync("config.js", path.join(OUT, "config.js"));
+  else fs.writeFileSync(path.join(OUT, "config.js"), "window.KPI_CONFIG = {};\n");
   process.exit(0);
 }
 
@@ -38,8 +56,12 @@ if (isSecret(key.value)) {
   console.error(`❌ ${key.name} đang chứa khóa BÍ MẬT (secret/service_role). Hãy dùng khóa publishable hoặc anon.`);
   process.exit(1);
 }
+if (!/^https:\/\/.+/.test(url.value)) {
+  console.error(`❌ ${url.name} phải bắt đầu bằng https:// (đang là: ${url.value}).`);
+  process.exit(1);
+}
 
-fs.writeFileSync("config.js",
+fs.writeFileSync(path.join(OUT, "config.js"),
 `// Tự tạo khi build trên Vercel từ ${url.name} và ${key.name}. Đừng sửa tay.
 window.KPI_CONFIG = {
   supabaseUrl: ${JSON.stringify(url.value)},
