@@ -129,7 +129,7 @@ th button.sort[data-on]{color:var(--ink)}
 .dname{font-size:22px;font-weight:700;letter-spacing:-.015em;line-height:1.2}
 .etools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .elist{display:flex;flex-direction:column}
-.erow,.ehead{display:grid;grid-template-columns:minmax(250px,2.2fr) repeat(5,minmax(58px,.5fr)) 64px 70px 104px 76px 36px;gap:8px;align-items:center;padding:8px 10px}
+.erow,.ehead{display:grid;grid-template-columns:minmax(220px,2.2fr) repeat(var(--ncol,5),minmax(58px,.5fr)) 64px 70px 104px 76px 36px;gap:8px;align-items:center;padding:8px 10px}
 .ehead{font-size:12.5px;color:var(--muted);font-weight:600;padding-top:0;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .ehead>*{text-align:center} .ehead>:first-child{text-align:left}
 .erow{border-bottom:1px solid var(--line);border-radius:10px;transition:background .15s}
@@ -371,3 +371,12 @@ button.cal-c:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
   .alert-strip{padding:11px 14px}
 }
 .ac-name{display:block;line-height:1.3}
+
+/* quản lý cột */
+.collist{display:flex;flex-direction:column;gap:8px}
+.colrow{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center}
+.colrow input{width:100%}
+.col-no{width:28px;height:28px;border-radius:8px;background:var(--surface-2);color:var(--muted);display:grid;place-items:center;font-weight:700;font-size:13px}
+.col-act{display:flex;gap:6px;align-items:center}
+.col-act .icon{width:36px;min-height:36px;font-size:16px}
+.rm:disabled{opacity:.3;cursor:not-allowed}

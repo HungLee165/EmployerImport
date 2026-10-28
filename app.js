@@ -16,6 +16,14 @@ const ICONS={
 const TITLES=Object.fromEntries(VIEWS.map(v=>[v[0],v[1]]));
 const DEFAULT_LABELS={b:"Cột B",c:"Cột C",d:"Cột D",e:"Cột E",f:"Cột F",j:"Cột J"};
 const COLS=["b","c","d","e","f"];
+const NSLOT=10; // số ô số tối đa mỗi người mỗi ngày (cần nâng cấp SQL để dùng quá 5)
+const blankV=()=>Array(NSLOT).fill(null);
+const padV=v=>(v||[]).slice(0,NSLOT).concat(blankV()).slice(0,NSLOT);
+function activeCols(){const L=S.settings.labels;
+  if(Array.isArray(L._cols)&&L._cols.length)return L._cols.filter(c=>Number.isInteger(c.slot)&&c.slot>=0&&c.slot<NSLOT);
+  return COLS.map((k,i)=>({slot:i,name:L[k]||DEFAULT_LABELS[k]}));}
+function maxSlots(){if(S.mode==="remote")return USE_SB&&S.schema>=2?NSLOT:5;return NSLOT;}
+function defaultTarget(){const t=S.settings.labels._target;return typeof t==="number"&&isFinite(t)?t:null;}
 const WD=["T2","T3","T4","T5","T6","T7","CN"];
 const WDL=["Thứ Hai","Thứ Ba","Thứ Tư","Thứ Năm","Thứ Sáu","Thứ Bảy","Chủ nhật"];
 const METRICS=[["avg","KPI TB/ngày"],["total","Tổng KPI"],["rate","Tỷ lệ đạt"]];
@@ -97,12 +105,12 @@ async function sbCall(action,data){const pin=lsGet("kpi:pin")||"";
 
 /* ---------- máy chủ chung (Google Apps Script) ---------- */
 function fromServerDay(day){return {...day,rows:(day.rows||[]).map(r=>{const c=cleanName(r.name);
-  return {name:c.name,key:c.key,probation:!!r.probation||c.probation,off:!!r.off,v:(r.v||[]).slice(0,5).concat([null,null,null,null,null]).slice(0,5),
+  return {name:c.name,key:c.key,probation:!!r.probation||c.probation,off:!!r.off,v:padV(r.v),
     total:r.total==null?0:r.total,target:r.target==null?null:r.target,pass:r.off?false:(r.pass==null?null:!!r.pass),j:r.j==null?null:r.j};})};}
 async function loadRemote(){
   let j;
   if(USE_SB){try{j=await sbRpc("kpi_load",{});}catch(e){throw new Error(e.code==="network"?"không kết nối được":e.message||"lỗi máy chủ");}
-    j.needPin=true;S.version=j.version||null;}
+    j.needPin=true;S.version=j.version||null;S.schema=+j.schema||1;}
   else{const res=await fetch(API+(API.includes("?")?"&":"?")+"action=load&t="+Date.now(),{cache:"no-store"});
     j=await res.json();if(!j.ok)throw new Error(j.error||"máy chủ báo lỗi");}
   const m=new Map();for(const [d,day] of Object.entries(j.days||{}))m.set(d,fromServerDay(day));
@@ -237,7 +245,7 @@ function rebuild(){
   rebuildMonths();S.alertCache=null;
 }
 function statsFor(dates,emp){
-  let days=0,total=0,pass=0,offs=0,tsum=0,tn=0;const cols=[0,0,0,0,0];
+  let days=0,total=0,pass=0,offs=0,tsum=0,tn=0;const cols=Array(NSLOT).fill(0);
   for(const d of dates){for(const r of (S.days.get(d)?.rows||[])){if(emp&&r.key!==emp)continue;
     if(r.off){offs++;continue;}days++;total+=r.total||0;if(r.pass)pass++;
     (r.v||[]).forEach((x,i)=>{cols[i]+=x||0;});if(r.target!=null){tsum+=r.target;tn++;}}}
@@ -315,7 +323,7 @@ function render(){
   S.after.forEach(f=>f());S.after=[];
 }
 function softRender(){
-  if(S.view==="caidat"&&S.rosterEdit)return;
+  if(S.view==="caidat"&&(S.rosterEdit||S.colEdit))return;
   if(S.view==="nhap"){
     if(S.nhapMode==="tay"&&S.entry&&!S.entry.dirty&&!S.entry.saving){openEntry(S.entry.date,true);render();}
     else if(S.nhapMode!=="tay"&&!S.preview)render();
@@ -577,7 +585,7 @@ function fillWeek(){
     h("td",{class:"l"},h("button",{class:"linkish",type:"button",title:"Xem so sánh của nhân viên này",onclick:()=>{S.cmp.emp=r.k;go("sosanh");}},who(r.name,r.prob))),
     r.cells.map(c=>{if(!c)return h("td",{class:"c"},h("span",{class:"chip none"},"·"));
       if(c.off)return h("td",{class:"c"},h("span",{class:"chip off"},"Nghỉ"));
-      const parts=COLS.map((k,i)=>c.v&&c.v[i]!=null?`${L[k]}: ${fmt(c.v[i])}`:null).filter(Boolean);
+      const parts=activeCols().map(col=>c.v&&c.v[col.slot]!=null?`${col.name}: ${fmt(c.v[col.slot])}`:null).filter(Boolean);
       if(c.target!=null)parts.push("Mốc: "+fmt(c.target));
       return h("td",{class:"c",title:parts.join("\n")},h("span",{class:"chip "+(c.pass===true?"ok":c.pass===false?"bad":"none")},fmt(c.total,1)));}),
     h("td",{},fmt(r.s.total,0)),h("td",{},h("strong",{},fmt(r.s.avg))),h("td",{},r.s.days?`${r.s.pass}/${r.s.days}`:"—"),
@@ -661,7 +669,7 @@ function viewCompare(){
         scales:{x:{grid:{display:false},title:{display:true,text:"Tuần trong năm"}},y:{beginAtZero:true,border:{display:false},max:m==="rate"?100:undefined,ticks:{callback:v=>m==="rate"?v+"%":v}}}}});
     if(c2)S.charts.push(c2);
     if(stackBox){const c3=mkChart(stackBox.querySelector("canvas"),{type:"bar",data:{labels:keys.map(k=>"T"+S.weeks.get(k).week+(S.cmp.year==="all"?"/"+String(S.weeks.get(k).year).slice(2):"")),
-      datasets:COLS.map((c,i)=>({label:L[c],data:keys.map(k=>ws(k,emp).cols[i]),backgroundColor:pal[i%pal.length],stack:"s",borderRadius:3,maxBarThickness:40}))},
+      datasets:activeCols().map((col,i)=>({label:col.name,data:keys.map(k=>ws(k,emp).cols[col.slot]),backgroundColor:pal[i%pal.length],stack:"s",borderRadius:3,maxBarThickness:40}))},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom"}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,border:{display:false}}}}});
       if(c3)S.charts.push(c3);}
   });
@@ -683,7 +691,7 @@ function viewNhap(){
 
 /* ----- manual entry ----- */
 let uid=0;
-function blankRow(name="",target=null,j=null){return {id:++uid,name,v:[null,null,null,null,null],target,j,off:false};}
+function blankRow(name="",target=null,j=null){return {id:++uid,name,v:blankV(),target:target??defaultTarget(),j,off:false};}
 function rowsFromRoster(){return S.roster.filter(p=>p.active!==false).map(p=>blankRow(p.name+(p.probation?" (thử việc)":""),p.target??null,null));}
 function rowsFromLast(before){const prior=[...S.days.keys()].filter(d=>!before||d<before).sort().pop()||[...S.days.keys()].sort().pop();
   if(!prior)return [];return (S.days.get(prior).rows||[]).map(r=>blankRow(r.name+(r.probation?" (thử việc)":""),r.target,null));}
@@ -691,13 +699,13 @@ function openEntry(date,silent){
   let rows,source,exists=S.days.has(date);
   const draft=lsGet("kpi-draft:"+date);
   if(draft){try{rows=JSON.parse(draft).map(r=>({...r,id:++uid}));source="draft";}catch(e){rows=null;}}
-  if(!rows&&exists){rows=(S.days.get(date).rows||[]).map(r=>({id:++uid,name:r.name+(r.probation?" (thử việc)":""),v:[...(r.v||[null,null,null,null,null])],target:r.target,j:r.j,off:!!r.off}));source="saved";}
+  if(!rows&&exists){rows=(S.days.get(date).rows||[]).map(r=>({id:++uid,name:r.name+(r.probation?" (thử việc)":""),v:padV(r.v),target:r.target,j:r.j,off:!!r.off}));source="saved";}
   if(!rows){rows=S.roster.length?rowsFromRoster():rowsFromLast(date);source=S.roster.length?"roster":"last";if(!rows.length){rows=[blankRow()];source="blank";}}
   S.entry={date,rows,source,exists,dirty:source==="draft",saving:false,confirmDel:false};
   if(!silent)render();
 }
-function rowTotal(r){return r.v.reduce((s,x)=>s+(x||0),0);}
-function rowFilled(r){return r.off||r.v.some(x=>x!=null);}
+function rowTotal(r){return activeCols().reduce((s,c)=>s+(r.v[c.slot]||0),0);}
+function rowFilled(r){return r.off||activeCols().some(c=>r.v[c.slot]!=null);}
 function rowPass(r){if(r.off)return false;if(r.target==null||!rowFilled(r))return null;return rowTotal(r)>=r.target;}
 let draftTimer=null;
 function touch(){const E=S.entry;E.dirty=true;clearTimeout(draftTimer);
@@ -732,8 +740,8 @@ function viewEntry(){
     h("span",{class:"spacer"}),
     h("span",{class:"small faint"},"Nhấn Enter để sang ô kế tiếp. Bản nháp tự giữ trên máy này.")));
 
-  const list=h("div",{class:"elist"});
-  list.append(h("div",{class:"ehead"},h("div",{},"Nhân viên"),COLS.map(c=>h("div",{},L[c])),h("div",{},"Tổng"),h("div",{},"Mốc"),h("div",{},"Kết quả"),h("div",{},"Nghỉ"),h("div",{})));
+  const list=h("div",{class:"elist",style:`--ncol:${activeCols().length}`});
+  list.append(h("div",{class:"ehead"},h("div",{},"Nhân viên"),activeCols().map(c=>h("div",{},c.name)),h("div",{},"Tổng"),h("div",{},"Mốc"),h("div",{},"Kết quả"),h("div",{},"Nghỉ"),h("div",{})));
   E.rows.forEach((r,i)=>{
     const tot=h("span",{},rowFilled(r)&&!r.off?fmt(rowTotal(r)):"—");
     const res=h("span",{});const rowEl=h("div",{class:"erow"+(r.off?" is-off":"")});
@@ -746,7 +754,7 @@ function viewEntry(){
     let av=avatar(r.name||"?");
     rowEl.append(...[
       h("div",{class:"ename"},av,nameIn),
-      COLS.map((c,ci)=>h("label",{class:"ecell"},h("span",{class:"lbl"},L[c]),numIn(()=>r.v[ci],v=>{r.v[ci]=v;},L[c]))),
+      activeCols().map(c=>h("label",{class:"ecell"},h("span",{class:"lbl"},c.name),numIn(()=>r.v[c.slot],v=>{r.v[c.slot]=v;},c.name))),
       h("div",{class:"ecell tot"},h("span",{class:"lbl"},"Tổng"),tot),
       h("label",{class:"ecell"},h("span",{class:"lbl"},"Mốc"),numIn(()=>r.target,v=>{r.target=v;},"Mốc KPI")),
       h("div",{class:"ecell res"},h("span",{class:"lbl"},"Kết quả"),res),
@@ -835,9 +843,9 @@ function viewPreview(){
         it.date&&S.days.has(it.date)?h("span",{class:"chip warn"},"đã có, sẽ thay"):null,
         it.dupe?h("span",{class:"chip bad"},"trùng ngày trong tệp"):null),
       h("details",{},h("summary",{},"Xem các dòng"),h("div",{class:"scroll"},h("table",{},
-        h("thead",{},h("tr",{},h("th",{class:"l"},"Nhân viên"),COLS.map(c=>h("th",{},L[c])),h("th",{},"Tổng"),h("th",{},"Mốc"),h("th",{class:"c"},"Kết quả"))),
+        h("thead",{},h("tr",{},h("th",{class:"l"},"Nhân viên"),activeCols().map(c=>h("th",{},c.name)),h("th",{},"Tổng"),h("th",{},"Mốc"),h("th",{class:"c"},"Kết quả"))),
         h("tbody",{},it.rows.map(r=>h("tr",{},h("td",{class:"l"},who(r.name,r.probation)),
-          r.v.map(x=>h("td",{},r.off?"":fmt(x))),h("td",{},r.off?"":fmt(r.total)),h("td",{},fmt(r.target)),h("td",{class:"c"},resultChip(r))))))))));});
+          activeCols().map(c=>h("td",{},r.off?"":fmt((r.v||[])[c.slot]))),h("td",{},r.off?"":fmt(r.total)),h("td",{},fmt(r.target)),h("td",{class:"c"},resultChip(r))))))))));});
   out.append(list);
   const dupes=P.items.some(it=>it.dupe);
   out.append(h("div",{class:"savebar"},
@@ -901,16 +909,7 @@ function viewSettings(){
         const people=R.filter(p=>p.name.trim()).map(p=>({name:cleanName(p.name).name,target:p.target==null||!isFinite(p.target)?null:p.target,probation:!!p.probation,active:true}));
         try{await saveRoster(people);S.rosterEdit=null;toast("Đã lưu danh sách nhân viên.");render();}
         catch(e){guard(e);toast(errMsg(e));}}},"Lưu danh sách"))));
-  // labels
-  const L={...S.settings.labels};
-  const grid=h("div",{class:"labels"});
-  [...COLS,"j"].forEach(k=>grid.append(h("label",{class:"field"},"Cột "+k.toUpperCase(),h("input",{type:"text",value:L[k],disabled:ro,oninput:e=>{L[k]=e.target.value;}}))));
-  out.append(h("div",{class:"panel"},
-    h("div",{class:"panel-head"},h("h3",{},"Tên các cột chỉ số"),h("span",{class:"small muted"},"Ví dụ “Cuộc gọi”, “Ticket”, “Chat”")),grid,
-    ro?null:h("div",{class:"row",style:"margin-top:14px"},h("span",{class:"spacer"}),h("button",{class:"btn",type:"button",onclick:async()=>{
-      const labels={};for(const k of [...COLS,"j"])labels[k]=(L[k]||"").trim()||DEFAULT_LABELS[k];
-      try{await saveSettings(labels);toast("Đã lưu tên cột.");render();}
-      catch(e){guard(e);toast(errMsg(e));}}},"Lưu tên cột"))));
+  out.append(columnsPanel(ro));
   if(S.mode==="remote")out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Mã nhập liệu"),
     h("span",{class:"small muted"},lsGet("kpi:pin")?"Máy này đã nhớ mã":"Máy này chưa lưu mã")),
     h("p",{class:"hint"},(USE_SB?"Mã do trưởng nhóm đặt trong Supabase.":"Mã do trưởng nhóm đặt trong Google Apps Script.")+" Ai có link đều xem được, nhưng chỉ người có mã mới lưu được số liệu."),
@@ -920,6 +919,45 @@ function viewSettings(){
   return out;
 }
 
+function columnsPanel(ro){
+  if(!S.colEdit)S.colEdit={cols:activeCols().map(c=>({...c,id:++uid})),target:defaultTarget(),retired:[...(S.settings.labels._retired||[])]};
+  const E=S.colEdit,MAX=maxSlots();
+  const freeSlot=()=>{const used=new Set(E.cols.map(c=>c.slot));
+    for(let s=0;s<MAX;s++)if(!used.has(s)&&!E.retired.includes(s))return s;
+    for(let s=0;s<MAX;s++)if(!used.has(s))return s;return -1;};
+  const list=h("div",{class:"collist"});
+  E.cols.forEach((c,i)=>list.append(h("div",{class:"colrow"},
+    h("span",{class:"col-no"},String(i+1)),
+    h("input",{type:"text",value:c.name,placeholder:"Tên cột, ví dụ EasyInvoice",disabled:ro,"aria-label":"Tên cột "+(i+1),oninput:e=>{c.name=e.target.value;}}),
+    ro?null:h("div",{class:"col-act"},
+      h("button",{class:"ghost icon",type:"button","aria-label":"Đưa lên",title:"Đưa lên",disabled:i===0,onclick:()=>{[E.cols[i-1],E.cols[i]]=[E.cols[i],E.cols[i-1]];render();}},"↑"),
+      h("button",{class:"ghost icon",type:"button","aria-label":"Đưa xuống",title:"Đưa xuống",disabled:i===E.cols.length-1,onclick:()=>{[E.cols[i+1],E.cols[i]]=[E.cols[i],E.cols[i+1]];render();}},"↓"),
+      h("button",{class:"rm",type:"button","aria-label":"Xóa cột "+c.name,title:"Xóa cột",disabled:E.cols.length<=1,onclick:()=>{E.cols.splice(i,1);if(!E.retired.includes(c.slot))E.retired.push(c.slot);render();}},"×")))));
+  const canAdd=!ro&&E.cols.length<MAX&&freeSlot()>=0;
+  return h("div",{class:"panel"},
+    h("div",{class:"panel-head"},h("h3",{},"Cột chỉ số và mốc KPI"),h("span",{class:"small muted"},`${E.cols.length}/${MAX} cột`)),
+    list,
+    ro?null:h("div",{class:"row",style:"margin-top:12px"},
+      h("button",{class:"ghost",type:"button",disabled:!canAdd,onclick:()=>{const s=freeSlot();if(s<0)return;E.cols.push({slot:s,name:"",id:++uid});render();
+        setTimeout(()=>{const ins=document.querySelectorAll(".colrow input");ins[ins.length-1]?.focus();},0);}},"＋ Thêm cột"),
+      MAX<NSLOT&&E.cols.length>=MAX?h("span",{class:"small muted"},"Đã đủ 5 cột. Muốn dùng tới 10 cột, chạy file nang_cap_cot.sql trong Supabase."):null),
+    h("div",{class:"row",style:"margin-top:18px;padding-top:16px;border-top:1px solid var(--line)"},
+      h("label",{class:"field"},"Mốc KPI mặc định",h("input",{type:"number",step:"any",min:"0",inputmode:"decimal",disabled:ro,placeholder:"Ví dụ 60",style:"width:140px;text-align:left",
+        value:E.target==null?"":String(E.target),oninput:e=>{const v=e.target.value.trim();E.target=v===""?null:Number(v);}})),
+      h("p",{class:"hint",style:"flex:1;min-width:220px;align-self:flex-end"},"Tự điền vào ô Mốc cho người chưa có mốc riêng khi nhập ngày mới. Mốc riêng từng người đặt ở Danh sách nhân viên bên trên.")),
+    h("p",{class:"hint",style:"margin-top:12px"},"Tổng = cộng các cột đang hiện. Xóa cột chỉ ẩn cột đó khỏi bảng, số liệu cũ vẫn được giữ và tổng của các ngày đã lưu không đổi. Khi nhập từ Excel, cột B–F trong file được đưa vào 5 cột đầu tiên ban đầu."),
+    ro?null:h("div",{class:"row",style:"margin-top:14px"},
+      h("button",{class:"ghost",type:"button",onclick:()=>{S.colEdit=null;render();}},"Hoàn tác"),h("span",{class:"spacer"}),
+      h("button",{class:"btn",type:"button",onclick:async()=>{
+        const cols=E.cols.map(c=>({slot:c.slot,name:c.name.trim()}));
+        if(cols.some(c=>!c.name)){toast("Đặt tên cho tất cả các cột trước khi lưu.");return;}
+        const seen=new Set();for(const c of cols){const k=fold(c.name);if(seen.has(k)){toast("Tên cột “"+c.name+"” bị trùng.");return;}seen.add(k);}
+        if(E.target!=null&&!(isFinite(E.target)&&E.target>=0)){toast("Mốc mặc định phải là một số không âm.");return;}
+        const labels={...S.settings.labels,_cols:cols,_target:E.target,_retired:E.retired.filter(s=>!cols.some(c=>c.slot===s))};
+        cols.forEach(c=>{if(c.slot<5)labels[COLS[c.slot]]=c.name;});
+        try{await saveSettings(labels);S.colEdit=null;S.cache=new Map();toast("Đã lưu cột và mốc mặc định.");render();}
+        catch(e){guard(e);toast(errMsg(e));}}},"Lưu cột và mốc")));
+}
 function backupPanel(ro){
   const file=h("input",{type:"file",accept:".json,application/json","aria-label":"Chọn file sao lưu"});
   return h("div",{class:"panel"},
