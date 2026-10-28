@@ -12,12 +12,23 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="top"><div class="top-in">
-  <div class="brand"><div class="logo" aria-hidden="true">KPI</div><div><h1>Nhóm hỗ trợ Nam Định</h1><small id="sub">Theo dõi KPI theo ngày, tuần và năm</small></div></div>
-  <div class="cta"><button class="btn mark" type="button" id="cta" aria-label="Nhập KPI hôm nay">＋ <span class="long">Nhập KPI hôm nay</span><span class="short" aria-hidden="true"></span></button></div>
-  <nav id="nav" aria-label="Mục"></nav>
-</div></header>
-<main id="main"></main>
+<div class="shell">
+  <aside class="side" aria-label="Điều hướng chính">
+    <div class="brand"><div class="logo" aria-hidden="true">KPI</div><div><div class="b-name">Hỗ trợ Nam Định</div><div class="b-sub">Báo cáo KPI nhóm</div></div></div>
+    <button class="btn mark side-cta" type="button" id="cta">＋ Nhập KPI hôm nay</button>
+    <nav id="nav" class="side-nav" aria-label="Mục"></nav>
+    <div class="side-foot sync-slot"></div>
+  </aside>
+  <div class="content">
+    <header class="topbar">
+      <div class="logo m-logo" aria-hidden="true">KPI</div>
+      <div class="tb-title"><div class="eyebrow" id="eyebrow"></div><h1 id="page-title">Tổng quan tuần</h1></div>
+      <div class="sync-slot m-sync"></div>
+    </header>
+    <main id="main"></main>
+  </div>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Mục chính"></nav>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
