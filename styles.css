@@ -380,3 +380,15 @@ button.cal-c:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
 .col-act{display:flex;gap:6px;align-items:center}
 .col-act .icon{width:36px;min-height:36px;font-size:16px}
 .rm:disabled{opacity:.3;cursor:not-allowed}
+
+/* ===== 5 màn: mục con, ô ngày công, nút nhập nhanh ===== */
+.dg{width:24px;height:24px;border-radius:7px;display:inline-grid;place-items:center;font-size:12px;font-weight:700;vertical-align:middle}
+.dg.ok{background:var(--ok-bg);color:var(--ok)} .dg.bad{background:var(--bad-bg);color:var(--bad)}
+.dg.off{background:var(--off-bg);color:var(--muted)} .dg.none{color:var(--faint)}
+.cal-legend .dg{width:20px;height:20px;font-size:11px}
+.stack>.seg{align-self:flex-start;display:flex;width:fit-content;max-width:100%}
+.fab{display:none}
+@media (max-width:900px){
+  .fab{display:inline-flex;position:fixed;right:16px;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:21;border-radius:99px;min-height:48px;padding:0 18px;box-shadow:0 10px 22px -10px rgba(0,0,0,.5)}
+  .tb .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+}
