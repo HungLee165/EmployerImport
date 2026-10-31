@@ -326,7 +326,7 @@ function softRender(){
   if(S.view==="caidat"&&(S.rosterEdit||S.colEdit))return;
   if(S.view==="nhap"){
     if(S.nhapMode==="tay"&&S.entry&&!S.entry.dirty&&!S.entry.saving){openEntry(S.entry.date,true);render();}
-    else if(S.nhapMode!=="tay"&&!S.preview)render();
+    else if(S.nhapMode!=="tay"&&!S.preview&&!S.mapping)render();
     return;}
   render();
 }
@@ -685,6 +685,7 @@ function viewNhap(){
   if(S.importMsg&&S.nhapMode!=="tay")out.append(h("p",{class:"banner info"},S.importMsg));
   if(S.nhapMode==="tay")out.append(viewEntry());
   else if(S.preview)out.append(viewPreview());
+  else if(S.mapping)out.append(viewMapping());
   else out.append(S.nhapMode==="tep"?viewFile():viewPaste());
   return out;
 }
@@ -789,42 +790,193 @@ async function saveEntry(){
 }
 
 /* ----- file / paste import ----- */
+// Hai kiểu file đọc được:
+//  1) Bảng có dòng tiêu đề: mỗi dòng là 1 người trong 1 ngày (có cột "Ngày", "Nhân viên"...). Người dùng ghép cột.
+//  2) Kiểu cũ: tên ở cột A, chỉ số B–F, mỗi ngày một khối (đọc bằng parseGrid).
+const HDR={
+  date:/^(ngay( lam( viec)?)?|date|thoi gian|ngay thang( nam)?)$/,
+  name:/^(ho( va)? ten|ten|ten nhan vien|nhan vien|nv|ho ten nv|name|staff)$/,
+  target:/^(moc|moc kpi|chi tieu|kpi muc tieu|muc tieu|target)$/,
+  off:/^(nghi|off|vang|nghi phep)$/,
+  total:/^(tong|tong kpi|total)$/,
+  result:/^(ket qua|danh gia|dat\/khong dat)$/
+};
+function cellStr(v){return v==null?"":String(v).trim();}
+function colLetter(i){let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
+function findHeader(grid){
+  for(let r=0;r<Math.min(grid.length,15);r++){const row=grid[r]||[];
+    const hasName=row.some(v=>HDR.name.test(fold(cellStr(v))));
+    const filled=row.filter(v=>cellStr(v)).length;
+    if(hasName&&filled>=3)return {row:r,headers:row.map(v=>cellStr(v))};}
+  return null;}
+function guessMap(headers){const used=new Set(),m={};
+  const take=(field,test)=>{const i=headers.findIndex((x,c)=>!used.has(c)&&x&&test(fold(x)));if(i>=0){m[field]=headers[i];used.add(i);}};
+  take("name",f=>HDR.name.test(f));take("date",f=>HDR.date.test(f));
+  const cols=activeCols();
+  cols.forEach(c=>{const n=fold(c.name);take("c"+c.slot,f=>f===n);});
+  cols.forEach(c=>{if(!m["c"+c.slot]){const n=fold(c.name);take("c"+c.slot,f=>f.length>=3&&(f.includes(n)||n.includes(f)));}});
+  take("target",f=>HDR.target.test(f));take("off",f=>HDR.off.test(f));take("total",f=>HDR.total.test(f));take("result",f=>HDR.result.test(f));
+  return m;}
+function toDate(v,year){if(v==null||v==="")return null;
+  if(typeof v==="number"){if(v>20000&&v<80000&&window.XLSX){const d=XLSX.SSF.parse_date_code(v);return d?mkDate(d.d,d.m,d.y):null;}return null;}
+  const s=String(v).trim();const m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return mkDate(+m[3],+m[2],+m[1]);
+  return parseDateText(s.replace(/\s.*$/,""),year);}
+function flatItems(sheets,map,opt){
+  const byDate=new Map();let skipped=0,noDate=0,dup=0,rowsN=0;const cols=activeCols();
+  for(const sh of sheets){const H=sh.hdr.headers;
+    const idx=f=>{const t=map[f];if(!t)return -1;return H.findIndex(x=>fold(x)===fold(t));};
+    const ci={name:idx("name"),date:idx("date"),target:idx("target"),off:idx("off"),total:idx("total"),result:idx("result")};
+    const cc=cols.map(c=>({slot:c.slot,i:idx("c"+c.slot)}));const anyCol=cc.some(x=>x.i>=0);
+    if(ci.name<0)continue;
+    for(let r=sh.hdr.row+1;r<sh.grid.length;r++){const row=sh.grid[r]||[];
+      const rawName=cellStr(row[ci.name]);if(!rawName)continue;
+      const fn=fold(rawName);if(HDR.name.test(fn)||/^(tong|total|trung binh)/.test(fn))continue;
+      let date=ci.date>=0?toDate(row[ci.date],opt.year):null;if(!date)date=opt.fallback||null;if(!date){noDate++;continue;}
+      const v=blankV();let offTxt=false;
+      cc.forEach(({slot,i})=>{if(i<0)return;if(/^(off|nghi)$/.test(fold(cellStr(row[i]))))offTxt=true;v[slot]=num(row[i]);});
+      const off=offTxt||(ci.off>=0&&/^(x|co|nghi|off|1|true|v|✓|✔)$/.test(fold(cellStr(row[ci.off]))));
+      const {name,key,probation}=cleanName(rawName);
+      let total=anyCol?cc.reduce((s,{slot})=>s+(v[slot]||0),0):(ci.total>=0?num(row[ci.total]):null);
+      const hasVal=anyCol?cc.some(({slot,i})=>i>=0&&v[slot]!=null):total!=null;
+      if(!hasVal&&!off){skipped++;continue;}
+      if(total==null)total=0;
+      let target=ci.target>=0?num(row[ci.target]):null;
+      if(target==null){const rp=S.roster.find(p=>fold(p.name)===key);target=rp&&rp.target!=null?rp.target:defaultTarget();}
+      const res=ci.result>=0?fold(cellStr(row[ci.result])):"";
+      const pass=off?false:(target!=null?total>=target:(/(khong|chua) dat/.test(res)?false:(/^dat/.test(res)?true:null)));
+      if(!byDate.has(date))byDate.set(date,{sheet:sh.name,rows:new Map()});
+      const day=byDate.get(date);if(day.rows.has(key))dup++;else rowsN++;
+      day.rows.set(key,{name,key,probation,off,v,total:off?0:total,target,pass,j:null});}}
+  const items=[...byDate].sort((a,b)=>a[0]<b[0]?-1:1).map(([date,d])=>({sheet:d.sheet,date,how:"flat",rows:[...d.rows.values()],include:true,dupe:false}));
+  return {items,skipped,noDate,dup,rowsN};}
+function startImport(flat,blocks,source,fallback){
+  if(!flat.length&&!blocks.length){toast("Không nhận ra dữ liệu nào. Xem lại cách sắp xếp file trong phần hướng dẫn.");return;}
+  S.importMsg="";
+  if(flat.length){const headers=[];flat.forEach(s=>s.hdr.headers.forEach(x=>{if(x&&!headers.includes(x))headers.push(x);}));
+    const map=guessMap(flat[0].hdr.headers);
+    let saved={};try{saved=JSON.parse(lsGet("kpi:map")||"{}")||{};}catch(e){}
+    for(const [k,t] of Object.entries(saved))if(t&&headers.includes(t))map[k]=t;
+    S.mapping={flat,blocks,source,fallback,headers,map};render();return;}
+  const items=blocksToItems(blocks);items.forEach((it,i)=>it.id=i);
+  S.preview={items,source,saving:false,progress:""};render();}
+function viewMapping(){
+  const M=S.mapping,cols=activeCols();
+  const fields=[["date","Ngày","Ví dụ 28/10/2026"],["name","Nhân viên","Bắt buộc"],
+    ...cols.map(c=>["c"+c.slot,c.name,"Cột chỉ số"]),
+    ["target","Mốc","Bỏ trống thì dùng mốc riêng hoặc mốc mặc định"],["off","Nghỉ","Ô có x, nghỉ hoặc off"],
+    ["total","Tổng","Chỉ dùng khi không ghép cột chỉ số nào"],["result","Kết quả","Chỉ dùng khi không có mốc"]];
+  const out=h("div",{class:"stack-s"});
+  out.append(h("p",{},h("strong",{},`Đã nhận ra bảng có dòng tiêu đề trong ${M.source}. `),
+    h("span",{class:"muted"},`Mỗi mục bên trái lấy số liệu từ cột nào trong file? Trang đã đoán sẵn, cậu chỉnh lại nếu chưa đúng.`)));
+  const grid=h("div",{class:"panel mapgrid"});
+  fields.forEach(([k,l,hint])=>{
+    const sel=h("select",{"aria-label":"Cột trong file cho "+l,onchange:e=>{M.map[k]=e.target.value||undefined;render();}},
+      h("option",{value:""},"(bỏ qua)"),M.headers.map(x=>h("option",{value:x},x)));
+    sel.value=M.map[k]||"";
+    grid.append(h("div",{class:"maprow"+(k==="name"&&!M.map.name?" need":"")+(M.map[k]?" on":"")},
+      h("div",{class:"map-l"},h("strong",{},l),h("span",{class:"small faint"},hint)),h("span",{class:"map-arrow","aria-hidden":"true"},"←"),sel));});
+  out.append(grid);
+  const yearSel=h("select",{"aria-label":"Năm",onchange:e=>{S.importYear=+e.target.value;render();}},
+    Array.from({length:6},(_,i)=>thisYear-4+i).reverse().map(y=>h("option",{value:String(y)},String(y))));yearSel.value=String(S.importYear);
+  out.append(h("div",{class:"row"},h("label",{class:"field"},"Năm, nếu cột Ngày chỉ ghi ngày/tháng",yearSel),
+    h("label",{class:"field"},"Ngày cho dòng không ghi ngày",h("input",{type:"date",value:M.fallback||"",onchange:e=>{M.fallback=e.target.value||null;render();}}))));
+  let res=null;
+  if(!M.map.name)out.append(h("p",{class:"banner"},"Chọn cột chứa tên nhân viên để tiếp tục."));
+  else{res=flatItems(M.flat,M.map,{year:S.importYear,fallback:M.fallback});
+    const warn=[];if(res.noDate)warn.push(`${res.noDate} dòng không có ngày (chọn cột Ngày, hoặc điền “Ngày cho dòng không ghi ngày”)`);
+    if(res.skipped)warn.push(`${res.skipped} dòng chưa có số liệu sẽ bỏ qua`);if(res.dup)warn.push(`${res.dup} dòng bị trùng người trong cùng ngày, lấy dòng sau cùng`);
+    out.append(h("p",{},h("strong",{},`Đọc được ${res.rowsN} dòng, thuộc ${res.items.length} ngày.`),warn.length?h("span",{class:"muted"}," "+warn.join(". ")+"."):null));
+    const first=res.items[0];
+    if(first)out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Xem thử "+longDate(first.date)),h("span",{class:"small muted"},"5 dòng đầu")),
+      h("div",{class:"scroll"},h("table",{},h("thead",{},h("tr",{},h("th",{class:"l"},"Nhân viên"),cols.map(c=>h("th",{},c.name)),h("th",{},"Tổng"),h("th",{},"Mốc"),h("th",{class:"c"},"Kết quả"))),
+        h("tbody",{},first.rows.slice(0,5).map(r=>h("tr",{},h("td",{class:"l"},who(r.name,r.probation)),cols.map(c=>h("td",{},r.off?"":fmt(r.v[c.slot]))),
+          h("td",{},r.off?"":fmt(r.total)),h("td",{},fmt(r.target)),h("td",{class:"c"},resultChip(r)))))))));}
+  if(M.blocks.length)out.append(h("p",{class:"small muted"},`Kèm theo ${M.blocks.length} khối ngày kiểu cũ ở các trang tính khác, sẽ được gộp vào bước sau.`));
+  out.append(h("div",{class:"savebar"},h("span",{class:"spacer"}),
+    h("button",{class:"ghost",type:"button",onclick:()=>{S.mapping=null;render();}},"Hủy"),
+    h("button",{class:"btn",type:"button",disabled:!res||!res.items.length,onclick:()=>{
+      lsSet("kpi:map",JSON.stringify(M.map));
+      const items=[...res.items,...blocksToItems(M.blocks)];items.forEach((it,i)=>it.id=i);refreshDupes(items);
+      S.preview={items,source:M.source,saving:false,progress:""};S.mapping=null;render();}},"Tiếp tục kiểm tra ›")));
+  return out;}
+function downloadTemplate(){
+  if(!window.XLSX){toast("Không tải được thư viện Excel. Kiểm tra mạng rồi tải lại trang.");return;}
+  const cols=activeCols(),dt=defaultTarget();
+  const head=["Ngày","Nhân viên",...cols.map(c=>c.name),"Mốc","Nghỉ"];
+  let people=S.roster.length?S.roster.map(p=>[p.name+(p.probation?" (thử việc)":""),p.target??dt]):[...S.emps.values()].map(e=>[e.name,dt]);
+  if(!people.length)people=[["Nguyễn Văn A",dt],["Trần Thị B",dt]];
+  const d=fmtFull(todayISO());
+  const ws=XLSX.utils.aoa_to_sheet([head,...people.slice(0,40).map(([n,t])=>[d,n,...cols.map(()=>null),t??null,null])]);
+  ws["!cols"]=[{wch:12},{wch:28},...cols.map(()=>({wch:13})),{wch:8},{wch:7}];
+  const guide=XLSX.utils.aoa_to_sheet([["Cách điền file này"],
+    ["1. Mỗi dòng là 1 người trong 1 ngày. Nhiều ngày ghi chung một trang, mỗi dòng ghi đúng ngày của nó."],
+    ["2. Cột Ngày ghi dạng ngày/tháng/năm, ví dụ 28/10/2026."],
+    ["3. Các cột chỉ số ghi số. Bỏ trống nếu không có."],
+    ["4. Cột Mốc có thể bỏ trống, web sẽ dùng mốc riêng của từng người hoặc mốc mặc định."],
+    ["5. Cột Nghỉ ghi x nếu người đó nghỉ, để trống nếu đi làm."],
+    ["6. Được đổi thứ tự cột hoặc thêm cột khác. Khi tải lên, web cho chọn lại cột nào là gì."],
+    ["7. Đừng xóa hoặc đổi chữ ở dòng tiêu đề (dòng 1)."]]);
+  guide["!cols"]=[{wch:100}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"KPI");XLSX.utils.book_append_sheet(wb,guide,"Hướng dẫn");
+  saveFile("Mau_nhap_KPI.xlsx",XLSX.write(wb,{bookType:"xlsx",type:"array"}),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");}
+function fmtExample(cols){
+  const c3=cols.slice(0,3),more=cols.length>3;
+  const row=(d,n,vals,off)=>[d,n,...vals.slice(0,c3.length),...(more?["…"]:[]),"60",off];
+  const head=["Ngày","Nhân viên",...c3.map(c=>c.name),...(more?["…"]:[]),"Mốc","Nghỉ"];
+  const rows=[row("28/10/2026","Nguyễn Thị Tấm",["12","5","8"],""),row("28/10/2026","Lê Văn Hùng",["","",""],"x"),row("29/10/2026","Nguyễn Thị Tấm",["10","7","9"],"")];
+  return h("div",{class:"scroll"},h("table",{class:"fmt-ex"},h("thead",{},h("tr",{},head.map(x=>h("th",{},x)))),h("tbody",{},rows.map(r=>h("tr",{},r.map(x=>h("td",{},x)))))));}
+function formatGuide(){
+  const cols=activeCols();
+  return h("details",{class:"fmt-guide"},h("summary",{},"File cần sắp xếp thế nào để web đọc được?"),
+    h("div",{class:"stack-s",style:"margin-top:10px"},
+      h("p",{},h("strong",{},"Cách 1 (nên dùng): bảng có dòng tiêu đề."),h("span",{class:"muted"}," Dòng đầu là tên cột, mỗi dòng bên dưới là 1 người trong 1 ngày. Thứ tự cột tùy ý.")),
+      fmtExample(cols),
+      h("p",{class:"small muted"},"Tên tiêu đề nên trùng tên cột trong Cài đặt để web tự ghép. Nếu khác, web sẽ cho chọn lại. Tải file mẫu để có sẵn đúng các cột."),
+      h("p",{},h("strong",{},"Cách 2: kiểu báo cáo cũ."),h("span",{class:"muted"}," Không có dòng tiêu đề. Tên ở cột A, chỉ số ở B–F, tổng ở G, mốc ở H, Đạt/Không đạt ở I. Mỗi ngày là một khối, có dòng ghi ngày như “17/3” hoặc dòng nhận xét “KPI ngày 16/03”."))));}
 function viewFile(){
   const yearSel=h("select",{"aria-label":"Năm của dữ liệu",onchange:e=>{S.importYear=+e.target.value;}},
     Array.from({length:6},(_,i)=>thisYear-4+i).reverse().map(y=>h("option",{value:String(y)},String(y))));yearSel.value=String(S.importYear);
   const file=h("input",{type:"file",accept:".xlsx,.xls,.ods,.csv,.tsv","aria-label":"Chọn tệp"});
   return h("div",{class:"panel stack-s"},
-    h("h3",{},"Tải tệp từ Google Sheets"),
-    h("ol",{class:"steps"},h("li",{},"Trong Google Sheets chọn Tệp → Tải xuống → Microsoft Excel (.xlsx)."),h("li",{},"Chọn năm của số liệu, vì bảng tính chỉ ghi ngày và tháng."),h("li",{},"Chọn tệp, bấm Đọc tệp, kiểm tra rồi lưu.")),
-    h("div",{class:"row",style:"margin-top:14px"},h("label",{class:"field"},"Năm của số liệu",yearSel),h("label",{class:"field"},"Tệp",file),
+    h("div",{class:"panel-head"},h("h3",{},"Tải tệp Excel hoặc Google Sheets"),
+      h("button",{class:"ghost",type:"button",onclick:downloadTemplate},"⬇ Tải file mẫu")),
+    h("ol",{class:"steps"},h("li",{},"Google Sheets: Tệp → Tải xuống → Microsoft Excel (.xlsx). Excel: lưu thành .xlsx."),
+      h("li",{},"Chọn tệp, bấm Đọc tệp. Nếu file có dòng tiêu đề, web sẽ cho kiểm tra cột nào là gì."),h("li",{},"Xem lại từng ngày rồi lưu.")),
+    h("div",{class:"row",style:"margin-top:14px"},h("label",{class:"field"},"Năm, nếu file chỉ ghi ngày/tháng",yearSel),h("label",{class:"field"},"Tệp",file),
       h("button",{class:"btn",type:"button",style:"align-self:flex-end",onclick:async()=>{const f=file.files&&file.files[0];if(!f){toast("Chọn tệp trước đã.");return;}await readFile(f);}},"Đọc tệp")),
-    h("p",{class:"hint"},"Mọi tab đều được đọc. Mỗi khối ngày cần tên ở cột A, chỉ số ở B–F, tổng ở G, mốc ở H, Đạt/Không đạt ở I. Ngày lấy từ dòng tiêu đề như “17/3”, hoặc từ dòng nhận xét có chữ “KPI ngày 16/03”."));
+    formatGuide());
 }
 function viewPaste(){
-  const ta=h("textarea",{placeholder:"Dán các ô đã sao chép từ Google Sheets vào đây (từ cột A đến J)…","aria-label":"Dữ liệu dán"});
+  const ta=h("textarea",{placeholder:"Dán các ô đã sao chép từ Google Sheets hoặc Excel vào đây, nên bôi đen cả dòng tiêu đề…","aria-label":"Dữ liệu dán"});
   const pd=h("input",{type:"date","aria-label":"Ngày của dữ liệu dán",value:S.pasteDate||todayISO(),onchange:e=>{S.pasteDate=e.target.value;}});
-  return h("div",{class:"panel stack-s"},h("h3",{},"Dán nhanh một ngày từ Google Sheets"),
-    h("p",{class:"hint"},"Bôi đen các dòng nhân viên của một ngày (cột A đến J), sao chép rồi dán vào ô dưới. Nếu đoạn dán không có dòng ngày, ngày bên dưới sẽ được dùng."),
-    ta,h("div",{class:"row"},h("label",{class:"field"},"Ngày",pd),h("button",{class:"btn",type:"button",style:"align-self:flex-end",onclick:()=>readPaste(ta.value,pd.value)},"Đọc đoạn dán")));
+  return h("div",{class:"panel stack-s"},h("h3",{},"Dán từ Google Sheets hoặc Excel"),
+    h("p",{class:"hint"},"Bôi đen vùng dữ liệu, nên lấy cả dòng tiêu đề, sao chép rồi dán vào ô dưới. Có dòng tiêu đề thì web sẽ cho ghép cột. Dòng nào không ghi ngày sẽ dùng ngày bên dưới."),
+    ta,h("div",{class:"row"},h("label",{class:"field"},"Ngày",pd),h("button",{class:"btn",type:"button",style:"align-self:flex-end",onclick:()=>readPaste(ta.value,pd.value)},"Đọc đoạn dán")),
+    formatGuide());
 }
 async function readFile(f){
   if(!window.XLSX){toast("Không tải được thư viện đọc Excel. Kiểm tra mạng rồi tải lại trang.");return;}
   try{const buf=await f.arrayBuffer();const isText=/\.(csv|tsv|txt)$/i.test(f.name);
     const wb=isText?XLSX.read(new TextDecoder("utf-8").decode(buf),{type:"string",raw:true}):XLSX.read(buf,{type:"array"});
-    let blocks=[];
-    for(const name of wb.SheetNames){const grid=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:false,defval:null,blankrows:true});
-      blocks.push(...parseGrid(grid,{sheet:isText?f.name.replace(/\.[^.]+$/,""):name,year:S.importYear}));}
-    if(!blocks.length){toast("Không tìm thấy dòng nhân viên nào trong tệp.");return;}
-    S.importMsg="";S.preview={items:blocksToItems(blocks),source:f.name,saving:false,progress:""};render();
+    const flat=[],blocks=[];
+    for(const name of wb.SheetNames){const ws=wb.Sheets[name];const sname=isText?f.name.replace(/\.[^.]+$/,""):name;
+      const rawGrid=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null,blankrows:true});
+      const hdr=findHeader(rawGrid);
+      if(hdr){flat.push({name:sname,grid:rawGrid,hdr});continue;}
+      const grid=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:null,blankrows:true});
+      blocks.push(...parseGrid(grid,{sheet:sname,year:S.importYear}));}
+    startImport(flat,blocks,f.name,null);
   }catch(e){toast("Không đọc được tệp: "+(e&&e.message||"định dạng lạ")+".");}
 }
 function readPaste(text,date){
   if(!text.trim()){toast("Dán dữ liệu vào ô trước đã.");return;}
   const grid=text.replace(/\r/g,"").split("\n").map(l=>l.split("\t"));
+  const hdr=findHeader(grid);
+  if(hdr){startImport([{name:"",grid,hdr}],[],"đoạn dán",date||null);return;}
   const blocks=parseGrid(grid,{sheet:"",year:date?+date.slice(0,4):S.importYear,fallbackDate:date||null});
-  if(!blocks.length){toast("Không nhận ra dòng nhân viên nào. Cột A cần là tên và có số liệu ở các cột sau.");return;}
-  S.importMsg="";S.preview={items:blocksToItems(blocks),source:"đoạn dán",saving:false,progress:""};render();
+  startImport([],blocks,"đoạn dán",date||null);
 }
+
 function viewPreview(){
   const P=S.preview,L=S.settings.labels;const out=h("div",{class:"stack-s"});
   const ready=P.items.filter(it=>it.include&&it.date);
@@ -832,7 +984,7 @@ function viewPreview(){
   out.append(h("p",{},h("strong",{},`Tìm thấy ${P.items.length} khối ngày trong ${P.source}. `),h("span",{class:"muted"},"Kiểm tra ngày, bỏ chọn khối không cần, rồi lưu.")));
   const list=h("div",{class:"items"});
   P.items.forEach(it=>{const work=it.rows.filter(r=>!r.off);
-    const how={label:["info","ngày từ dòng tiêu đề"],text:["info","ngày từ dòng nhận xét"],paste:["info","ngày đã chọn"],none:["warn","chưa có ngày"]}[it.how];
+    const how={label:["info","ngày từ dòng tiêu đề"],text:["info","ngày từ dòng nhận xét"],paste:["info","ngày đã chọn"],none:["warn","chưa có ngày"],flat:["info","ngày từ cột Ngày"]}[it.how];
     list.append(h("div",{class:"item"+(it.include?"":" skip")},
       h("div",{class:"row"},
         h("label",{class:"toggle"},h("input",{type:"checkbox",role:"switch","aria-label":"Lưu khối này",checked:it.include,onchange:e=>{it.include=e.target.checked;refreshDupes(P.items);render();}})),

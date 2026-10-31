@@ -380,3 +380,16 @@ button.cal-c:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
 .col-act{display:flex;gap:6px;align-items:center}
 .col-act .icon{width:36px;min-height:36px;font-size:16px}
 .rm:disabled{opacity:.3;cursor:not-allowed}
+
+/* ghép cột khi nhập file */
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:4px 28px}
+.maprow{display:grid;grid-template-columns:minmax(0,1fr) 20px minmax(150px,1fr);gap:10px;align-items:center;padding:9px 6px;border-bottom:1px dashed var(--line)}
+.maprow .map-l{display:flex;flex-direction:column;min-width:0}
+.maprow select{width:100%}
+.maprow.on select{border-color:var(--brand);background:var(--brand-soft)}
+.maprow.need select{border-color:var(--bad)}
+.map-arrow{color:var(--faint);text-align:center}
+.fmt-guide{border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
+.fmt-guide summary{cursor:pointer;font-weight:600;color:var(--brand)}
+.fmt-ex th,.fmt-ex td{text-align:left;font-size:13px;padding:6px 10px;border:1px solid var(--line)}
+.fmt-ex th{background:var(--surface-2);color:var(--ink)}
