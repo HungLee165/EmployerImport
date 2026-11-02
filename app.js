@@ -90,11 +90,15 @@ const API=String(CFG.apiUrl||"").trim();
 const SB_URL=String(CFG.supabaseUrl||"").trim().replace(/\/+$/,"");
 const SB_KEY=String(CFG.supabaseKey||CFG.supabaseAnonKey||"").trim();
 const USE_SB=!!(SB_URL&&SB_KEY);
+let AUTH=null;
 
 /* ---------- Supabase ---------- */
 async function sbFetch(path,opts={}){
   const headers={apikey:SB_KEY,"Content-Type":"application/json",...(opts.headers||{})};
-  if(SB_KEY.startsWith("eyJ"))headers.Authorization="Bearer "+SB_KEY; // khóa anon kiểu cũ (JWT)
+  const {data,error}=await AUTH.auth.getSession();
+  if(error)throw {code:"auth",message:"Không xác nhận được phiên đăng nhập."};
+  if(!data.session)throw {code:"auth",message:"Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại."};
+  headers.Authorization="Bearer "+data.session.access_token;
   let res;try{res=await fetch(SB_URL+path,{...opts,headers,cache:"no-store"});}catch(e){throw {code:"network"};}
   const txt=await res.text();let body=null;try{body=txt?JSON.parse(txt):null;}catch(e){}
   if(!res.ok){if(body&&(body.message==="pin"||body.code==="28000"))throw {code:"pin"};
@@ -1222,5 +1226,83 @@ async function init(){
   db.doc("config/settings").onSnapshot(s=>{const L=s.exists?(s.data().labels||{}):{};S.settings.labels={...DEFAULT_LABELS,...L};softRender();},()=>{});
   db.doc("config/roster").onSnapshot(s=>{S.roster=s.exists?(s.data().people||[]):[];softRender();},()=>{});
 }
-init();
+function showAuthMessage(message){
+  const el=document.getElementById("auth-message");
+  el.textContent=message||"";
+  el.hidden=!message;
+}
+function authErrorMessage(error){
+  const message=String(error&&error.message||"");
+  if(/invalid login credentials/i.test(message))return "Email hoặc mật khẩu chưa đúng.";
+  if(/email not confirmed/i.test(message))return "Email chưa được xác nhận. Hãy liên hệ người quản lý.";
+  return message||"Không thể đăng nhập. Hãy thử lại.";
+}
+async function boot(){
+  const screen=document.getElementById("auth-screen");
+  const form=document.getElementById("auth-form");
+  const submit=document.getElementById("auth-submit");
+  const appShell=document.getElementById("app-shell");
+  const tabbar=document.getElementById("tabbar");
+  const fab=document.getElementById("fab");
+  const account=document.getElementById("account-controls");
+  const signOut=document.getElementById("sign-out");
+  const showApp=session=>{
+    screen.hidden=true;appShell.hidden=false;tabbar.hidden=false;fab.hidden=false;
+    account.hidden=false;
+    document.getElementById("account-email").textContent=session.user.email||"";
+  };
+  const configMissing=!USE_SB;
+  const sdk=window.supabase;
+  if(configMissing){
+    showAuthMessage("Chưa cấu hình Supabase. Hãy kiểm tra SUPABASE_URL và khóa publishable/anon trong phần cấu hình triển khai.");
+    submit.disabled=true;
+    return;
+  }
+  if(!sdk||typeof sdk.createClient!=="function"){
+    showAuthMessage("Không tải được dịch vụ đăng nhập. Hãy kiểm tra kết nối mạng rồi tải lại trang.");
+    submit.disabled=true;
+    return;
+  }
+  try{AUTH=sdk.createClient(SB_URL,SB_KEY);}
+  catch(error){
+    showAuthMessage("Cấu hình Supabase không hợp lệ: "+authErrorMessage(error));
+    submit.disabled=true;
+    return;
+  }
+  form.addEventListener("submit",async event=>{
+    event.preventDefault();
+    showAuthMessage("");
+    submit.disabled=true;submit.textContent="Đang đăng nhập…";
+    try{
+      const {error}=await AUTH.auth.signInWithPassword({
+        email:document.getElementById("auth-email").value.trim(),
+        password:document.getElementById("auth-password").value
+      });
+      if(error){showAuthMessage(authErrorMessage(error));return;}
+      location.reload();
+    }catch(error){showAuthMessage(authErrorMessage(error));}
+    finally{submit.disabled=false;submit.textContent="Đăng nhập";}
+  });
+  signOut.addEventListener("click",async()=>{
+    signOut.disabled=true;
+    try{
+      const {error}=await AUTH.auth.signOut();
+      if(error)throw error;
+      location.reload();
+    }catch(error){toast("Không thể đăng xuất: "+authErrorMessage(error));signOut.disabled=false;}
+  });
+  let session;
+  try{
+    const {data,error}=await AUTH.auth.getSession();
+    if(error)throw error;
+    session=data.session;
+  }catch(error){showAuthMessage("Không thể kiểm tra phiên đăng nhập: "+authErrorMessage(error));return;}
+  if(!session)return;
+  showApp(session);
+  AUTH.auth.onAuthStateChange(event=>{
+    if(event==="SIGNED_OUT")location.reload();
+  });
+  await init();
+}
+boot();
 })();

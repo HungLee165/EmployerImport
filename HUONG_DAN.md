@@ -52,8 +52,19 @@ Chọn **một** trong hai cách.
 
 1. Mở Supabase. Với cách A, vào Vercel → Storage → bấm vào database → **Open in Supabase**.
 2. Chọn **SQL Editor → New query**. Dán toàn bộ `supabase_setup.sql`.
-3. Ở dòng `values (1, '1234')`, đổi `1234` thành **mã nhập liệu** của cậu.
-4. Bấm **Run**. Thấy **Success** là xong.
+3. Ở dòng `values (1, '1234')`, đổi `1234` thành **mã nhập liệu ban đầu** của cậu.
+4. Bấm **Run**. Thấy **Success** là xong. Script này giới hạn quyền xem dữ liệu cho tài khoản đã đăng nhập; nếu trước đó đã chạy bản cũ thì chạy lại script này để áp dụng quyền mới. Chạy lại không làm thay đổi mã PIN đã đặt.
+
+## Tạo tài khoản đăng nhập
+
+Trang yêu cầu email và mật khẩu Supabase Auth trước khi mở báo cáo. Không có chức năng tự đăng ký công khai.
+
+1. Trong Supabase, vào **Authentication → Users → Add user**.
+2. Tạo một tài khoản cho mỗi thành viên được phép xem KPI. Chia sẻ mật khẩu an toàn; thành viên có thể đăng nhập ngay nếu tài khoản được tạo ở trạng thái đã xác nhận.
+3. Trong **Authentication → Providers → Email**, đảm bảo đăng nhập bằng email/mật khẩu được bật.
+4. Trong phần cấu hình Authentication, tắt **Allow new users to sign up**. Đây là bước cần thiết để người ngoài không tự tạo tài khoản rồi đăng nhập.
+
+Mã PIN nhập liệu vẫn được giữ riêng: thành viên cần PIN để lưu hoặc xóa dữ liệu KPI, kể cả khi đã đăng nhập.
 
 ## Bước 4. Build lại trên Vercel
 
@@ -66,8 +77,8 @@ Trong log build, tìm dòng:
 
 ## Bước 5. Kiểm tra
 
-Mở https://baocaohotronamdinh.vercel.app:
-- Góc trên có **chấm xanh** và dòng **“Dữ liệu chung, cập nhật …”** là đã nối thành công. 🎉
+Mở https://baocaohotronamdinh.vercel.app và đăng nhập bằng tài khoản đã tạo:
+- Góc trên có **chấm xanh** và dòng **“Cập nhật …”** là đã nối thành công. 🎉
 - Bấm **＋ Nhập KPI hôm nay**, nhập thử rồi bấm Lưu. Trang sẽ hỏi mã nhập liệu.
 - Mở trang trên điện thoại hoặc máy khác, số vừa nhập sẽ hiện ở đó.
 
@@ -80,6 +91,7 @@ Mở https://baocaohotronamdinh.vercel.app:
 | Vẫn hiện “Chưa nối cơ sở dữ liệu chung” | Biến môi trường chưa vào bản build. Kiểm tra lại tên biến, rồi **Redeploy**. Xem log build có dòng ✅ chưa |
 | Log build báo ⚠️ “Chưa thấy SUPABASE_URL…” | Tên biến sai, hoặc chưa tick môi trường *Production* |
 | Build báo ❌ “khóa BÍ MẬT” | Đang dùng nhầm khóa secret. Đổi sang khóa publishable hoặc anon |
+| Không đăng nhập được | Kiểm tra tài khoản trong **Authentication → Users**, email/mật khẩu, và bật đăng nhập Email trong **Authentication → Providers** |
 | “Không tải được dữ liệu từ Supabase” | Chưa chạy `supabase_setup.sql`, hoặc project Supabase đang bị tạm dừng (bấm **Restore**) |
 | Lưu báo “Sai mã nhập liệu” | Kiểm tra mã trong Supabase: SQL Editor → `select pin from kpi_secret;` |
 

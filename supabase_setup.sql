@@ -38,23 +38,26 @@ create table if not exists public.kpi_secret (
   id   int primary key default 1 check (id = 1),
   pin  text not null
 );
--- ĐỔI '1234' THÀNH MÃ CỦA CẬU, rồi bấm Run.
--- Muốn đổi mã sau này: sửa dòng dưới và chạy lại cả file.
+-- ĐỔI '1234' THÀNH MÃ BAN ĐẦU trước khi chạy lần đầu.
+-- Muốn đổi mã sau này: update public.kpi_secret set pin = 'MA_MOI' where id = 1;
 insert into public.kpi_secret (id, pin) values (1, '1234')
-on conflict (id) do update set pin = excluded.pin;
+on conflict (id) do nothing;
 
--- ---------- 4. Bảo mật: ai cũng XEM được, KHÔNG ai ghi trực tiếp ----------
+-- ---------- 4. Bảo mật: chỉ tài khoản đã đăng nhập được xem ----------
 alter table public.kpi_rows   enable row level security;
 alter table public.kpi_config enable row level security;
 alter table public.kpi_secret enable row level security;
 
 drop policy if exists "ai cung xem" on public.kpi_rows;
-create policy "ai cung xem" on public.kpi_rows   for select to anon, authenticated using (true);
+drop policy if exists "tai khoan da dang nhap duoc xem" on public.kpi_rows;
+create policy "tai khoan da dang nhap duoc xem" on public.kpi_rows for select to authenticated using (true);
 drop policy if exists "ai cung xem" on public.kpi_config;
-create policy "ai cung xem" on public.kpi_config for select to anon, authenticated using (true);
+drop policy if exists "tai khoan da dang nhap duoc xem" on public.kpi_config;
+create policy "tai khoan da dang nhap duoc xem" on public.kpi_config for select to authenticated using (true);
 -- kpi_secret không có policy nào → trang web không đọc được mã.
 
-grant select on public.kpi_rows, public.kpi_config to anon, authenticated;
+revoke all on public.kpi_rows, public.kpi_config, public.kpi_secret from anon;
+grant select on public.kpi_rows, public.kpi_config to authenticated;
 revoke all on public.kpi_secret from anon, authenticated;
 revoke insert, update, delete on public.kpi_rows, public.kpi_config from anon, authenticated;
 
@@ -78,7 +81,7 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from kpi_secret where id = 1 and pin = coalesce(p_pin, ''));
 $$;
 
--- ---------- 7. Đọc toàn bộ (ai cũng gọi được) ----------
+-- ---------- 7. Đọc dữ liệu (chỉ tài khoản đã đăng nhập gọi được) ----------
 create or replace function public.kpi_load()
 returns jsonb language sql stable set search_path = public as $$
   select jsonb_build_object(
@@ -179,9 +182,13 @@ end $$;
 -- ---------- 11. Quyền gọi hàm ----------
 revoke execute on function public.kpi_check_pin(text)                from public, anon, authenticated;
 revoke execute on function public.kpi_bump()                          from public, anon, authenticated;
-grant  execute on function public.kpi_load()                          to anon, authenticated;
-grant  execute on function public.kpi_write_days(text, jsonb)         to anon, authenticated;
-grant  execute on function public.kpi_delete_day(text, date)          to anon, authenticated;
-grant  execute on function public.kpi_save_config(text, text, jsonb)  to anon, authenticated;
+revoke execute on function public.kpi_load()                          from public, anon, authenticated;
+revoke execute on function public.kpi_write_days(text, jsonb)         from public, anon, authenticated;
+revoke execute on function public.kpi_delete_day(text, date)          from public, anon, authenticated;
+revoke execute on function public.kpi_save_config(text, text, jsonb)  from public, anon, authenticated;
+grant  execute on function public.kpi_load()                          to authenticated;
+grant  execute on function public.kpi_write_days(text, jsonb)         to authenticated;
+grant  execute on function public.kpi_delete_day(text, date)          to authenticated;
+grant  execute on function public.kpi_save_config(text, text, jsonb)  to authenticated;
 
 -- Xong! Kiểm tra nhanh: select public.kpi_load();
