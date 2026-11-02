@@ -1,3 +1,7 @@
 # Không đưa các file này lên web công khai
 supabase_setup.sql
 HUONG_DAN.md
+
+# Không đưa các file SQL lên web
+nang_cap_cot.sql
+dang_nhap.sql
