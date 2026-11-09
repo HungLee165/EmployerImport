@@ -840,22 +840,22 @@ function viewDanhMuc(){
       return h("tr",{},h("td",{},h("input",{type:"text",value:n.ma,disabled:ro,class:"mono",style:"width:110px","aria-label":"Mã NV",oninput:e=>{n.ma=e.target.value.trim();mark("nv");}})),
         h("td",{},h("input",{type:"text",value:n.ten,disabled:ro,style:"min-width:200px;width:100%","aria-label":"Họ tên",oninput:e=>{n.ten=e.target.value;mark("nv");}})),
         h("td",{},sel),
-        h("td",{},h("input",{type:"text",value:n.cv||"",disabled:ro,style:"min-width:150px","aria-label":"Chức vụ của "+n.ten,oninput:e=>{n.cv=e.target.value;mark("nv");}})),
         h("td",{},h("input",{type:"date",value:n.ns||"",disabled:ro,"aria-label":"Ngày sinh",onchange:e=>{n.ns=e.target.value||null;mark("nv");}})),
+        h("td",{},h("input",{type:"date",value:n.ntv||"",disabled:ro,"aria-label":"Ngày thử việc",onchange:e=>{n.ntv=e.target.value||null;mark("nv");}})),
         h("td",{},h("input",{type:"date",value:n.nct||"",disabled:ro,"aria-label":"Ngày bắt đầu chính thức",onchange:e=>{n.nct=e.target.value||null;mark("nv");render();}})),
         h("td",{class:"small muted"},seniority(n.nct)),h("td",{},ro?null:h("button",{class:"rm",type:"button","aria-label":"Xóa "+n.ten,onclick:()=>{D.nv.splice(D.nv.indexOf(n),1);mark("nv");render();}},"×")));}));
-    const paste=h("textarea",{placeholder:"Mã NV ⇥ Họ tên ⇥ Phòng ban ⇥ Chức vụ ⇥ Ngày sinh ⇥ Ngày chính thức (mỗi người một dòng, copy thẳng từ Excel)","aria-label":"Dán danh sách nhân viên",style:"min-height:110px"});
+    const paste=h("textarea",{placeholder:"Mã NV ⇥ Họ tên ⇥ Phòng ban ⇥ Ngày sinh ⇥ Ngày thử việc ⇥ Ngày chính thức (mỗi người một dòng, copy thẳng từ Excel)","aria-label":"Dán danh sách nhân viên",style:"min-height:110px"});
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Danh sách nhân viên"),
         h("div",{class:"row"},h("input",{type:"search",placeholder:"Tìm mã hoặc tên…",value:S.dmQ||"","aria-label":"Tìm nhân viên",oninput:e=>{S.dmQ=e.target.value;clearTimeout(S._dq);S._dq=setTimeout(render,300);}}),
-          ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:D.pb[0]?D.pb[0].id:null,cv:"",ns:null,nct:null,_id:uid2()});S.dmQ="";mark("nv");render();
+          ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:D.pb[0]?D.pb[0].id:null,ns:null,ntv:null,nct:null,_id:uid2()});S.dmQ="";mark("nv");render();
             setTimeout(()=>{const i=document.querySelectorAll(".dm-nv tbody tr:last-child input");i[0]&&i[0].focus();},0);}},"＋ Thêm nhân viên"))),
-      h("div",{class:"scroll"},h("table",{class:"grid dm-nv"},h("thead",{},h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Họ tên"),h("th",{class:"l"},"Phòng ban"),h("th",{class:"l"},"Chức vụ"),h("th",{class:"l"},"Ngày sinh"),h("th",{class:"l"},"Ngày chính thức"),h("th",{class:"l"},"Thâm niên"),h("th",{}))),tb)),
+      h("div",{class:"scroll"},h("table",{class:"grid dm-nv"},h("thead",{},h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Họ tên"),h("th",{class:"l"},"Phòng ban"),h("th",{class:"l"},"Ngày sinh"),h("th",{class:"l"},"Ngày thử việc"),h("th",{class:"l"},"Ngày chính thức"),h("th",{class:"l"},"Thâm niên"),h("th",{}))),tb)),
       ro?null:h("details",{class:"fmt-guide"},h("summary",{},"Dán nhanh danh sách từ Excel"),h("div",{class:"stack-s",style:"margin-top:10px"},paste,
-        h("p",{class:"hint"},"Thứ tự cột: Mã NV, Họ tên, Phòng ban, Chức vụ, Ngày sinh, Ngày chính thức. Có dòng tiêu đề cũng được. Trùng Mã NV thì cập nhật, phòng ban chưa có thì tự thêm."),
+        h("p",{class:"hint"},"Thứ tự cột: Mã NV, Họ tên, Phòng ban, Ngày sinh, Ngày thử việc, Ngày chính thức. Có dòng tiêu đề cũng được. Trùng Mã NV thì cập nhật, phòng ban chưa có thì tự thêm."),
         h("button",{class:"btn",type:"button",onclick:()=>{let n=0,u=0;for(const line of paste.value.replace(/\r/g,"").split("\n")){const c=line.split("\t").map(x=>x.trim());
             if(!c[0]||!c[1]||/^ma/.test(fold(c[0]))&&/ten/.test(fold(c[1])))continue;
             let pb=null;if(c[2]){let p=D.pb.find(x=>fold(x.ten)===fold(c[2]));if(!p){p={id:uid2(),ten:c[2],chuan:null};D.pb.push(p);D.dirty.pb=true;}pb=p.id;}
-            const rec={ma:c[0],ten:c[1],pb,ns:parseAnyDate(num(c[4])??c[4]),nct:parseAnyDate(num(c[5])??c[5])};if(c[3])rec.cv=c[3];
+            const rec={ma:c[0],ten:c[1],pb,ns:parseAnyDate(num(c[3])??c[3]),ntv:parseAnyDate(num(c[4])??c[4]),nct:parseAnyDate(num(c[5])??c[5])};
             const ex=D.nv.find(x=>fold(x.ma)===fold(c[0]));if(ex){Object.assign(ex,rec);u++;}else{D.nv.push({...rec,_id:uid2()});n++;}}
           if(!n&&!u){toast("Không đọc được dòng nào.");return;}mark("nv");toast(`Thêm ${n}, cập nhật ${u} nhân viên. Bấm Lưu để ghi lại.`+(D.dirty.pb?" Có phòng ban mới, nhớ lưu cả tab Phòng ban.":""));render();}},"Thêm vào danh sách")))));
     out.append(saveBtn("nv",async()=>{const list=D.nv.map(({_id,...n})=>({...n,ma:(n.ma||"").trim(),ten:(n.ten||"").trim()}));
