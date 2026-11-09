@@ -450,21 +450,16 @@ const pbName=id=>(pbById(id)||{}).ten||"";
 const pbOrder=()=>S.pb.map(p=>p.ten);
 const nvByMa=ma=>S.nv.find(n=>fold(n.ma)===fold(ma))||null;
 
-/* ---------- công chuẩn ---------- */
-function autoCong(thang){const [y,m]=thang.split("-").map(Number);const nd=new Date(Date.UTC(y,m,0)).getUTCDate();let wk=0;const sats=[];
-  for(let d=1;d<=nd;d++){const w=new Date(Date.UTC(y,m-1,d)).getUTCDay();if(w>=1&&w<=5)wk++;else if(w===6)sats.push(iso(y,m,d));}
-  const a=S.cong&&dateOrNull(S.cong.sat);let worked;
-  if(a){const A=parseISO(a);worked=sats.filter(x=>{const k=Math.round((parseISO(x)-A)/864e5/7);return ((k%2)+2)%2===0;});}
-  else worked=sats.filter((x,i)=>i%2===1);
-  return {cong:wk+worked.length,wk,sat:worked.length,satDays:worked,anchored:!!a};}
-function congChuan(thang){const o=S.cong&&S.cong.override&&S.cong.override[thang];
-  return o!=null&&o!==""&&isFinite(+o)?+o:autoCong(thang).cong;}
-
+/* ---------- công chuẩn: nhập tay ---------- */
+const validNum=v=>v!=null&&v!==""&&isFinite(+v);
+function congDefault(){const d=S.cong&&S.cong.macdinh;return validNum(d)?+d:24;}
+function congSet(thang){const o=S.cong&&S.cong.override&&S.cong.override[thang];return validNum(o)?+o:null;}
+function congChuan(thang){const o=congSet(thang);return o!=null?o:congDefault();}
 /* ---------- tính toán ---------- */
 function rowTotal(r){const sl=r.sl||{};
   if(!S.dv.length)return Object.values(sl).reduce((s,x)=>s+(+x||0),0);
   return S.dv.reduce((s,d)=>s+(+sl[d.ma]||0),0);}
-function calc(r){const total=rowTotal(r);const cong=r.cong!=null&&r.cong!==""&&isFinite(+r.cong)?+r.cong:congChuan(r.thang);
+function calc(r){const total=rowTotal(r);const cs=congSet(r.thang);const cong=cs!=null?cs:validNum(r.cong)?+r.cong:congDefault();
   const nghi=+r.nghi||0;const tt=Math.max(0,cong-nghi);const avg=tt>0?total/tt:null;
   const chuan=r.chuan!=null&&r.chuan!==""&&isFinite(+r.chuan)?+r.chuan:null;
   return {total,cong,nghi,tt,avg,chuan,pass:avg!=null&&chuan!=null?avg>=chuan:null,truc:+r.truc||0};}
@@ -507,7 +502,7 @@ function deptSelect(value,onPick,allLabel="Tất cả phòng ban"){const d=allDe
 function yearSelect(onPick){const ys=[...new Set([...S.kmKeys.map(k=>+k.slice(0,4)),thisYear])].sort((a,b)=>b-a);
   const s=h("select",{"aria-label":"Năm",onchange:e=>onPick(+e.target.value)},ys.map(y=>h("option",{value:String(y)},"Năm "+y)));s.value=String(S.year);return s;}
 function setupChecklist(){
-  const items=[["Phòng ban và KPI chuẩn",S.pb.length>0,"pb"],["Danh sách dịch vụ",S.dv.length>0,"dv"],["Danh sách nhân viên",S.nv.length>0,"nv"],["Mốc Thứ 7 đi làm (công chuẩn)",!!dateOrNull(S.cong.sat),"cong"]];
+  const items=[["Phòng ban và KPI chuẩn",S.pb.length>0,"pb"],["Danh sách dịch vụ",S.dv.length>0,"dv"],["Danh sách nhân viên",S.nv.length>0,"nv"],["Công chuẩn mặc định",validNum(S.cong&&S.cong.macdinh),"cong"]];
   if(items.every(x=>x[1]))return null;
   return h("div",{class:"panel setup"},h("div",{class:"panel-head"},h("h3",{},"🧭 Thiết lập ban đầu"),h("span",{class:"small muted"},isAdmin()?"Làm lần lượt các bước dưới":"Nhờ Quản lý hoàn tất các bước dưới")),
     h("ol",{class:"setup-list"},items.map(([t,ok,tab])=>h("li",{class:ok?"done":""},h("span",{class:"chip "+(ok?"ok":"warn")},ok?"Xong":"Chưa có"),
@@ -681,14 +676,20 @@ function viewNhap(){
   return out;}
 function viewEnt(){
   if(!S.ent||S.ent.thang!==S.month)openEnt(S.month);
-  const E=S.ent,ro=!writable(),dv=S.dv,ac=autoCong(E.thang),cc=congChuan(E.thang),ov=S.cong&&S.cong.override&&S.cong.override[E.thang];
+  const E=S.ent,ro=!writable(),dv=S.dv,own=congSet(E.thang)!=null;
+  const snapC=(()=>{const c=new Map();for(const r of S.kmonths.get(E.thang)||[])if(validNum(r.cong))c.set(+r.cong,(c.get(+r.cong)||0)+1);let b=null,n=0;for(const [k,v] of c)if(v>n){b=k;n=v;}return b;})();
+  const cc=own?congSet(E.thang):snapC!=null?snapC:congDefault();
   const out=h("div",{class:"stack"});
-  const congBox=h("div",{class:"cong-box"},h("div",{class:"lab small muted"},"Công chuẩn tháng"),h("div",{class:"cong-v"},String(cc)),
-    h("div",{class:"small muted"},ov!=null&&ov!==""?`Quản lý đã sửa tay (tự tính: ${ac.cong})`:`${ac.wk} ngày T2–T6 + ${ac.sat} Thứ 7${ac.anchored?"":" (chưa đặt mốc Thứ 7)"}`),
-    isAdmin()?h("button",{class:"linkish sync",type:"button",onclick:()=>{S.dmTab="cong";go("danhmuc");}},"Sửa công chuẩn ›"):null);
+  const cIn=h("input",{type:"number",step:"0.5",min:"0",max:"31",value:String(cc),"aria-label":"Công chuẩn "+monthLabel(E.thang),class:"cong-in"});
+  const congBox=h("div",{class:"cong-box"},h("div",{class:"lab small muted"},"Công chuẩn tháng"),
+    isAdmin()?h("div",{class:"row cong-edit"},cIn,h("button",{class:"btn",type:"button",onclick:async e=>{const v=cIn.value.trim();
+        if(!validNum(v)||+v<=0||+v>31){toast("Nhập công chuẩn từ 1 đến 31.");return;}
+        const nc={...S.cong,override:{...(S.cong.override||{}),[E.thang]:+v}};e.target.disabled=true;
+        try{await saveCfg2("cong",nc);S.dm=null;toast(`Đã đặt công chuẩn ${monthLabel(E.thang).toLowerCase()}: ${v}.`);render();}catch(err){toast(errMsg(err));e.target.disabled=false;}}},"Lưu"))
+      :h("div",{class:"cong-v"},String(cc)),
+    h("div",{class:"small muted"},own?"Đã đặt riêng cho tháng này":snapC!=null?"Theo số liệu đã lưu của tháng":`Đang dùng công chuẩn mặc định (${congDefault()})`));
   out.append(h("div",{class:"panel datebar"},monthBar(v=>{if(S.ent&&S.ent.dirty)toast("Bản nháp tháng "+S.ent.thang.slice(5)+" vẫn được giữ trên máy.");S.month=v;S.ent=null;render();}),
     h("div",{class:"dateinfo"},h("div",{class:"dname"},monthLabel(E.thang)),h("span",{class:"chip "+(E.draft?"warn":E.rows.some(r=>r.exists)?"info":"ok")},E.draft?"Đang dùng bản nháp chưa lưu":E.rows.some(r=>r.exists)?"Tháng đã có số liệu, đang sửa":"Tháng mới")),congBox));
-  if(!ac.anchored&&!(ov!=null&&ov!==""))out.append(h("p",{class:"banner"},"Chưa đặt mốc “Thứ 7 có đi làm”, công chuẩn đang tạm tính. "+(isAdmin()?"Vào Danh mục → Công chuẩn để đặt.":"Nhờ Quản lý đặt trong Danh mục.")));
   const q=fold(S.entQ||""),pbF=S.entPb||"";
   out.append(h("div",{class:"etools"},h("input",{type:"search",placeholder:"Lọc mã hoặc tên…","aria-label":"Lọc nhân viên",value:S.entQ||"",oninput:e=>{S.entQ=e.target.value;filterEnt();}}),
     deptSelect(pbF,v=>{S.entPb=v;filterEnt();}),E.draft&&!ro?h("button",{class:"ghost",type:"button",onclick:()=>{lsDel("kpi:draft2:"+E.thang);S.ent=null;render();}},"Bỏ bản nháp"):null,
@@ -730,7 +731,7 @@ async function saveKpiRows(rows,dels){
   const by=S.me?(S.me.ho_ten||S.me.email):"";const at=new Date().toISOString();
   rows.forEach(r=>S.kpi.set(r.thang+"|"+r.ma,{...r,by,at}));(dels||[]).forEach(([th,ma])=>S.kpi.delete(th+"|"+ma));rebuild();}
 async function saveEnt(){
-  const E=S.ent;const cc=congChuan(E.thang);
+  const E=S.ent;const cs=congSet(E.thang);const old=(S.kmonths.get(E.thang)||[]).find(r=>validNum(r.cong));const cc=cs!=null?cs:old?+old.cong:congDefault();
   const rows=E.rows.filter(entFilled).map(r=>({thang:E.thang,ma:r.ma,ten:r.ten,pb:r.pb||"",sl:Object.fromEntries(Object.entries(r.sl).filter(([,v])=>v!=null&&v!=="")),
     nghi:+r.nghi||0,truc:+r.truc||0,cong:cc,chuan:r.chuan}));
   const dels=E.rows.filter(r=>r.exists&&!entFilled(r)).map(r=>[E.thang,r.ma]);
@@ -823,7 +824,7 @@ function downloadTemplate2(){if(!window.XLSX){toast("Không tải được thư 
    DANH MỤC: nhân viên, dịch vụ, phòng ban, công chuẩn
    ===================================================================== */
 function dmInit(){if(S.dm)return;S.dm={nv:S.nv.map(n=>({...n,_id:uid2()})),dv:S.dv.map(d=>({...d,_id:uid2(),_saved:true})),pb:S.pb.map(p=>({...p})),
-  cong:{sat:S.cong.sat||"",override:{...(S.cong.override||{})}},dirty:{}};}
+  cong:{macdinh:S.cong.macdinh??null,override:{...(S.cong.override||{})}},dirty:{}};}
 function viewDanhMuc(){
   dmInit();const D=S.dm,ro=!isAdmin(),tab=S.dmTab||"nv";
   const out=h("div",{class:"stack"});
@@ -886,18 +887,22 @@ function viewDanhMuc(){
       try{await saveCfg2("phongban",D.pb.map(p=>({...p,ten:p.ten.trim()})));if(D.dirty.nv)await saveCfg2("nhanvien",D.nv.map(({_id,...n})=>n));S.dm=null;S.ent=null;toast("Đã lưu phòng ban.");render();}catch(e){toast(errMsg(e));}}));}
   else{
     const y=S.year||thisYear;const months=Array.from({length:12},(_,i)=>`${y}-${pad(i+1)}`);
-    const tmp={...S.cong};S.cong={sat:D.cong.sat,override:D.cong.override};
-    const trs=months.map(m=>{const a=autoCong(m);const o=D.cong.override[m];
-      return h("tr",{},h("td",{class:"l"},h("strong",{},monthLabel(m))),h("td",{},String(a.wk)),h("td",{class:"small"},a.satDays.map(d=>fmtDM(d)).join(", ")||"—"),h("td",{},h("strong",{},String(a.cong))),
-        h("td",{},h("input",{type:"number",step:"0.5",min:"0",max:"31",value:o==null?"":String(o),placeholder:String(a.cong),disabled:ro,style:"width:90px","aria-label":"Sửa tay "+monthLabel(m),
-          oninput:e=>{const v=e.target.value.trim();if(v==="")delete D.cong.override[m];else D.cong.override[m]=Number(v);mark("cong");}})));});
-    S.cong=tmp;
+    const def=validNum(D.cong.macdinh)?+D.cong.macdinh:24;
+    const snap=m=>{const c=new Map();for(const r of S.kmonths.get(m)||[])if(validNum(r.cong))c.set(+r.cong,(c.get(+r.cong)||0)+1);let best=null,bn=0;for(const [k,v] of c)if(v>bn){best=k;bn=v;}return best;};
+    const trs=months.map(m=>{const o=D.cong.override[m];const sv=snap(m);const used=validNum(o)?+o:sv!=null?sv:def;const n=(S.kmonths.get(m)||[]).length;
+      return h("tr",{},h("td",{class:"l"},h("strong",{},monthLabel(m))),
+        h("td",{},h("input",{type:"number",step:"0.5",min:"0",max:"31",value:validNum(o)?String(o):"",placeholder:String(def),disabled:ro,style:"width:100px","aria-label":"Công chuẩn "+monthLabel(m),
+          oninput:e=>{const v=e.target.value.trim();if(v==="")delete D.cong.override[m];else D.cong.override[m]=Number(v);mark("cong");}})),
+        h("td",{},h("strong",{},String(used)),validNum(o)?null:h("span",{class:"small faint"},sv!=null?" (theo số liệu đã lưu)":" (mặc định)")),
+        h("td",{class:"small muted"},n?n+" người đã có số liệu":""));});
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Công chuẩn"),yearSelect(v=>{S.year=v;render();})),
-      h("p",{class:"hint"},"Công chuẩn = số ngày Thứ 2 đến Thứ 6 + các Thứ 7 đi làm. Thứ 7 làm cách tuần: chọn một ngày Thứ 7 có đi làm, web tự suy ra các Thứ 7 còn lại. Tháng có lễ, Tết thì sửa tay ở cột cuối."),
-      h("div",{class:"row",style:"margin:12px 0"},h("label",{class:"field"},"Một ngày Thứ 7 có đi làm",h("input",{type:"date",value:D.cong.sat||"",disabled:ro,onchange:e=>{const v=e.target.value;
-        if(v&&parseISO(v).getUTCDay()!==6){toast("Ngày này không phải Thứ 7.");e.target.value=D.cong.sat||"";return;}D.cong.sat=v;mark("cong");render();}}))),
-      h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},h("th",{class:"l"},"Tháng"),h("th",{},"Ngày T2–T6"),h("th",{},"Thứ 7 đi làm"),h("th",{},"Tự tính"),h("th",{},"Sửa tay"))),h("tbody",{},trs)))));
-    out.append(saveBtn("cong",async()=>{try{await saveCfg2("cong",{sat:D.cong.sat||null,override:D.cong.override});S.dm=null;S.ent=null;toast("Đã lưu công chuẩn.");render();}catch(e){toast(errMsg(e));}}));}
+      h("p",{class:"hint"},"Nhập tay số công chuẩn của từng tháng. Tháng nào để trống thì dùng công chuẩn mặc định. Công thực tế của mỗi người = Công chuẩn − Ngày nghỉ. Có thể đặt nhanh ngay trên màn Nhập KPI tháng."),
+      h("div",{class:"row",style:"margin:12px 0"},h("label",{class:"field"},"Công chuẩn mặc định",h("input",{type:"number",step:"0.5",min:"1",max:"31",value:validNum(D.cong.macdinh)?String(D.cong.macdinh):"",placeholder:"24",disabled:ro,style:"width:120px",
+        oninput:e=>{const v=e.target.value.trim();D.cong.macdinh=v===""?null:Number(v);mark("cong");}}))),
+      h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},h("th",{class:"l"},"Tháng"),h("th",{},"Công chuẩn (nhập tay)"),h("th",{},"Đang dùng"),h("th",{}))),h("tbody",{},trs)))));
+    out.append(saveBtn("cong",async()=>{const bad=[D.cong.macdinh,...Object.values(D.cong.override)].some(v=>validNum(v)&&(+v<=0||+v>31));
+      if(bad){toast("Công chuẩn phải từ 1 đến 31.");return;}
+      try{await saveCfg2("cong",{macdinh:validNum(D.cong.macdinh)?+D.cong.macdinh:null,override:D.cong.override});S.dm=null;S.ent=null;toast("Đã lưu công chuẩn.");render();}catch(e){toast(errMsg(e));}}));}
   return out;}
 async function saveCfg2(key,value){S.busy=true;try{await sbRpc("kpi_set_config",{p_key:key,p_value:value});}finally{S.busy=false;}
   if(key==="nhanvien")S.nv=value;else if(key==="dichvu")S.dv=value;else if(key==="phongban")S.pb=value;else if(key==="cong")S.cong=value;}
