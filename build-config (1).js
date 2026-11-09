@@ -19,13 +19,28 @@ for (const f of FILES) {
 }
 console.log(`✅ Đã chép ${FILES.join(", ")} vào ${OUT}/`);
 
-// Bộ icon (favicon, icon điện thoại, ảnh chia sẻ link) trong thư mục "icons" → đưa ra thư mục gốc của web
-if (fs.existsSync("icons")) {
-  const icons = fs.readdirSync("icons").filter(n => !n.startsWith("."));
-  for (const n of icons) fs.copyFileSync(path.join("icons", n), path.join(OUT, n));
-  console.log(`✅ Đã chép ${icons.length} file icon: ${icons.join(", ")}`);
-} else {
-  console.log("⚠️  Không thấy thư mục icons/ (favicon sẽ không có trên web).");
+// Bộ icon (favicon, icon điện thoại, ảnh chia sẻ link) trong thư mục "icons" → đưa ra thư mục gốc của web.
+// Tự tìm cả khi bị lồng thư mục (icons/icons/...). Lỗi ở bước này không làm hỏng cả lần build.
+const ICON_FILES = ["favicon.ico", "favicon-96x96.png", "apple-touch-icon.png", "icon-192.png",
+  "icon-512.png", "icon-maskable-512.png", "og-image.png", "site.webmanifest"];
+try {
+  const found = {};
+  const walk = dir => {
+    for (const n of fs.readdirSync(dir)) {
+      const p = path.join(dir, n);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (ICON_FILES.includes(n.toLowerCase()) && !found[n.toLowerCase()]) found[n.toLowerCase()] = p;
+    }
+  };
+  if (fs.existsSync("icons")) walk("icons");
+  for (const n of ICON_FILES) if (!found[n] && fs.existsSync(n)) found[n] = n; // file icon để ngay thư mục gốc
+  const names = Object.keys(found);
+  for (const n of names) fs.copyFileSync(found[n], path.join(OUT, n));
+  if (names.length) console.log(`✅ Đã chép ${names.length}/${ICON_FILES.length} file icon: ${names.join(", ")}`);
+  const missing = ICON_FILES.filter(n => !found[n]);
+  if (missing.length) console.log(`⚠️  Thiếu file icon: ${missing.join(", ")} (web vẫn chạy, chỉ thiếu icon).`);
+} catch (e) {
+  console.log(`⚠️  Lỗi khi chép icon: ${e.message} (bỏ qua, web vẫn chạy).`);
 }
 
 const pick = (...names) => {
