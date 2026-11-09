@@ -354,7 +354,7 @@ function chartDefaults(){if(!window.Chart)return;Chart.defaults.font.family='"Be
   Chart.defaults.plugins.tooltip.padding=10;Chart.defaults.plugins.tooltip.cornerRadius=8;Chart.defaults.plugins.legend.labels.usePointStyle=true;}
 function mkChart(canvas,cfg){if(!window.Chart){canvas.replaceWith(h("p",{class:"muted small"},"Không tải được thư viện biểu đồ. Kiểm tra mạng rồi tải lại trang."));return null;}
   return new Chart(canvas,cfg);}
-const PALETTE=()=>[cv("--brand"),"#E0891B","#2A9D8F","#B5487A","#7A62C9","#5C8A2E","#C2543B","#3B7EA1"];
+const PALETTE=()=>[cv("--brand"),"#3CC48A","#1C86B8","#E0891B","#7A62C9","#B5487A","#5C8A2E","#C2543B"];
 
 /* ---------- shell ---------- */
 function icon(n){const s=h("span",{class:"ic","aria-hidden":"true"});s.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]||""}</svg>`;return s;}
@@ -372,7 +372,7 @@ function renderNav(){
     "aria-current":(S.view===k||(k==="them"&&["sosanh","lichsu","caidat","taikhoan","them"].includes(S.view)))?"page":null,onclick:()=>go(k)},icon(ic),h("span",{class:"lb"},l),badge(k))));
   const t=document.getElementById("page-title");if(t)t.textContent=TITLES[S.view]||"";
   const e=document.getElementById("eyebrow");if(e)e.textContent=longDate(todayISO());
-  document.title=(TITLES[S.view]?TITLES[S.view]+" – ":"")+"KPI nhóm hỗ trợ Nam Định";
+  document.title=(TITLES[S.view]?TITLES[S.view]+" – ":"")+"EasySupport KPI Nam Định";
 }
 function go(v){S.view=v;S.flash=null;if(v==="nhap"&&S.nhapMode==="tay"&&!S.entry)openEntry(todayISO(),true);render();window.scrollTo(0,0);}
 function render(){
@@ -578,8 +578,7 @@ function handleAuthRedirect(){
 function viewGate(){
   const G=S.gate;const A=S.authUI||(S.authUI={});
   const card=h("div",{class:"auth-card"});const add=(...xs)=>card.append(...xs.filter(x=>x!=null&&x!==false));
-  add(h("div",{class:"auth-brand"},h("div",{class:"logo","aria-hidden":"true"},"KPI"),
-    h("div",{},h("div",{class:"auth-t"},"Hỗ trợ Nam Định"),h("div",{class:"small muted"},"Báo cáo KPI nhóm"))));
+  add(h("div",{class:"auth-brand"},h("div",{class:"brand-full",role:"img","aria-label":"EasySupport"}),h("div",{class:"small muted"},"Báo cáo KPI nhóm hỗ trợ Nam Định")));
   const go_=(s,keep)=>{S.gate=s;S.authUI=keep||{};render();};
   const msgEl=()=>A.msg?h("p",{class:"auth-msg bad",role:"alert"},A.msg):A.ok?h("p",{class:"auth-msg ok",role:"status"},A.ok):null;
   const field=(label,attrs)=>h("label",{class:"field"},label,h("input",attrs));

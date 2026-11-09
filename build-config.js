@@ -19,6 +19,15 @@ for (const f of FILES) {
 }
 console.log(`✅ Đã chép ${FILES.join(", ")} vào ${OUT}/`);
 
+// Bộ icon (favicon, icon điện thoại, ảnh chia sẻ link) trong thư mục "icons" → đưa ra thư mục gốc của web
+if (fs.existsSync("icons")) {
+  const icons = fs.readdirSync("icons").filter(n => !n.startsWith("."));
+  for (const n of icons) fs.copyFileSync(path.join("icons", n), path.join(OUT, n));
+  console.log(`✅ Đã chép ${icons.length} file icon: ${icons.join(", ")}`);
+} else {
+  console.log("⚠️  Không thấy thư mục icons/ (favicon sẽ không có trên web).");
+}
+
 const pick = (...names) => {
   for (const n of names) {
     const v = (process.env[n] || "").trim();
