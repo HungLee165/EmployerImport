@@ -445,6 +445,16 @@ function seniority(d){if(!d)return "";const a=parseISO(d),b=parseISO(todayISO())
   if(b.getUTCDate()<a.getUTCDate())mo--;if(mo<0)return "chưa đến ngày";const y=Math.floor(mo/12),r=mo%12;return (y?y+" năm ":"")+(r||!y?r+" tháng":"").trim();}
 
 /* ---------- danh mục ---------- */
+// Ô ngày dạng dd/mm/yyyy (vì <input type="date"> hiển thị theo ngôn ngữ trình duyệt, không ép được).
+function dmDateCell(n,key,aria,ro,mark){
+  const inp=h("input",{type:"text",placeholder:"dd/mm/yyyy",maxlength:"10",style:"width:130px",
+    value:n[key]?fmtFull(n[key]):"",disabled:ro,"aria-label":aria,
+    onchange:e=>{const t=e.target.value.trim();
+      if(!t){n[key]=null;mark("nv");render();return;}
+      const d=parseAnyDate(t);
+      if(!d){toast("Ngày không hợp lệ. Nhập dạng ngày/tháng/năm, ví dụ 25/12/2025.");render();return;}
+      n[key]=d;mark("nv");render();}});
+  return h("td",{},inp);}
 const pbById=id=>S.pb.find(p=>p.id===id)||null;
 const pbName=id=>(pbById(id)||{}).ten||"";
 const pbOrder=()=>S.pb.map(p=>p.ten);
@@ -840,9 +850,9 @@ function viewDanhMuc(){
       return h("tr",{},h("td",{},h("input",{type:"text",value:n.ma,disabled:ro,class:"mono",style:"width:110px","aria-label":"Mã NV",oninput:e=>{n.ma=e.target.value.trim();mark("nv");}})),
         h("td",{},h("input",{type:"text",value:n.ten,disabled:ro,style:"min-width:200px;width:100%","aria-label":"Họ tên",oninput:e=>{n.ten=e.target.value;mark("nv");}})),
         h("td",{},sel),
-        h("td",{},h("input",{type:"date",value:n.ns||"",disabled:ro,"aria-label":"Ngày sinh",onchange:e=>{n.ns=e.target.value||null;mark("nv");}})),
-        h("td",{},h("input",{type:"date",value:n.ntv||"",disabled:ro,"aria-label":"Ngày thử việc",onchange:e=>{n.ntv=e.target.value||null;mark("nv");}})),
-        h("td",{},h("input",{type:"date",value:n.nct||"",disabled:ro,"aria-label":"Ngày bắt đầu chính thức",onchange:e=>{n.nct=e.target.value||null;mark("nv");render();}})),
+        dmDateCell(n,"ns","Ngày sinh",ro,mark),
+        dmDateCell(n,"ntv","Ngày thử việc",ro,mark),
+        dmDateCell(n,"nct","Ngày bắt đầu chính thức",ro,mark),
         h("td",{class:"small muted"},seniority(n.nct)),h("td",{},ro?null:h("button",{class:"rm",type:"button","aria-label":"Xóa "+n.ten,onclick:()=>{D.nv.splice(D.nv.indexOf(n),1);mark("nv");render();}},"×")));}));
     const paste=h("textarea",{placeholder:"Mã NV ⇥ Họ tên ⇥ Phòng ban ⇥ Ngày sinh ⇥ Ngày thử việc ⇥ Ngày chính thức (mỗi người một dòng, copy thẳng từ Excel)","aria-label":"Dán danh sách nhân viên",style:"min-height:110px"});
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Danh sách nhân viên"),
