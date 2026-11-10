@@ -18,6 +18,7 @@ for (const f of FILES) {
   fs.copyFileSync(f, path.join(OUT, f));
 }
 console.log(`✅ Đã chép ${FILES.join(", ")} vào ${OUT}/`);
+fs.writeFileSync(path.join(OUT, "health.json"), JSON.stringify({ app: "easysupport" }));
 
 // Bộ icon (favicon, icon điện thoại, ảnh chia sẻ link) trong thư mục "icons" → đưa ra thư mục gốc của web.
 // Tự tìm cả khi bị lồng thư mục (icons/icons/...). Lỗi ở bước này không làm hỏng cả lần build.

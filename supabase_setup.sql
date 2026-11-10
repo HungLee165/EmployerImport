@@ -85,6 +85,7 @@ $$;
 create or replace function public.kpi_load()
 returns jsonb language sql stable set search_path = public as $$
   select jsonb_build_object(
+    
     'days', coalesce((
       select jsonb_object_agg(t.ngay::text,
                jsonb_build_object('date', t.ngay::text, 'sheet', t.sheet, 'rows', t.rows))

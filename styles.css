@@ -509,3 +509,4 @@ td.hc.yr{background:var(--brand-soft);color:var(--brand)}
 .cal-grid .cd.sel{background:var(--brand);color:var(--brand-ink);font-weight:700}
 .cal-grid .cd:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .cal-foot{display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.unsaved{color:var(--warn);font-weight:700}

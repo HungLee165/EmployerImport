@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+/* Chuyển từ địa chỉ cũ sang easysupport.io.vn, chỉ khi tên miền mới đã trỏ đúng về web này */
+(function(){var OLD="baocaohotronamdinh.vercel.app",NEW="https://easysupport.io.vn";
+  if(location.hostname!==OLD)return;
+  fetch(NEW+"/health.json",{cache:"no-store"}).then(function(r){return r.ok?r.json():null;})
+    .then(function(j){if(j&&j.app==="easysupport")location.replace(NEW+location.pathname+location.search+location.hash);})
+    .catch(function(){});})();
+</script>
 <title>EasySupport – KPI nhóm hỗ trợ Nam Định</title>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
@@ -16,8 +24,8 @@
 <meta property="og:site_name" content="EasySupport">
 <meta property="og:title" content="EasySupport – KPI nhóm hỗ trợ Nam Định">
 <meta property="og:description" content="Báo cáo KPI tháng theo nhân viên, phòng ban và dịch vụ.">
-<meta property="og:url" content="https://baocaohotronamdinh.vercel.app/">
-<meta property="og:image" content="https://baocaohotronamdinh.vercel.app/og-image.png">
+<meta property="og:url" content="https://easysupport.io.vn/">
+<meta property="og:image" content="https://easysupport.io.vn/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
