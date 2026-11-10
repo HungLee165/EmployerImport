@@ -485,3 +485,6 @@ td.hc.yr{background:var(--brand-soft);color:var(--brand)}
 .cong-edit{gap:8px;justify-content:flex-end;margin:4px 0}
 .cong-in{width:96px;font-size:22px;font-weight:800;text-align:center;color:var(--brand);min-height:44px}
 @media (max-width:900px){.cong-edit{justify-content:flex-start}}
+.dm-nv input.dmy{width:118px!important;min-width:0}
+.dm-nv td:nth-child(2) input{min-width:210px!important}
+.dm-nv td{padding:7px 6px}
