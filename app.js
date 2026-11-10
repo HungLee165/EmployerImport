@@ -1019,6 +1019,27 @@ function viewDanhMuc(){
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Phòng ban và KPI chuẩn"),ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.pb.push({id:uid2(),ten:"",chuan:null,_k0:null,_chg:new Set(PB_F)});mark("pb");render();}},"＋ Thêm phòng ban")),
       h("div",{class:"scroll"},h("table",{class:"grid dm-tbl dm-pb"},h("thead",{},h("tr",{},h("th",{class:"l"},"Tên phòng ban"),h("th",{class:"l"},"KPI chuẩn (case/ngày)"),h("th",{class:"l"},"Nhân viên"),h("th",{}))),tb)),
       h("p",{class:"hint",style:"margin-top:10px"},"KPI chuẩn áp dụng khi nhập tháng mới. Các tháng đã lưu giữ nguyên KPI chuẩn lúc lưu, để báo cáo cũ không bị đổi.")));
+    if(!ro&&S.kmKeys.length){
+      const months=[...S.kmKeys].reverse();
+      const fromSel=h("select",{"aria-label":"Áp dụng từ tháng"},months.map(m=>h("option",{value:m},monthLabel(m))));
+      const preview=h("p",{class:"small muted",style:"margin-top:8px"});
+      const plan=from=>{const cur=new Map(S.pb.map(p=>[fold(p.ten),p.chuan]));
+        return [...S.kpi.values()].filter(r=>r.thang>=from&&cur.has(fold(r.pb||""))&&validNum(cur.get(fold(r.pb||"")))&&!(validNum(r.chuan)&&+r.chuan===+cur.get(fold(r.pb||""))))
+          .map(r=>({thang:r.thang,ma:r.ma,ten:r.ten,pb:r.pb,sl:{...(r.sl||{})},nghi:+r.nghi||0,truc:+r.truc||0,cong:validNum(r.cong)?+r.cong:congChuan(r.thang),chuan:+cur.get(fold(r.pb||""))}));};
+      const showPlan=()=>{const n=plan(fromSel.value).length;preview.textContent=n?`Sẽ đổi KPI chuẩn cho ${n} dòng số liệu từ ${monthLabel(fromSel.value).toLowerCase()} trở đi.`:"Các tháng này đã dùng đúng KPI chuẩn hiện tại, không cần đổi.";};
+      fromSel.addEventListener("change",showPlan);S.after.push(showPlan);
+      out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Áp dụng KPI chuẩn mới cho số liệu đã lưu")),
+        h("p",{class:"hint"},"Số liệu đã lưu giữ KPI chuẩn tại lúc nhập. Muốn các tháng đã nhập tính theo KPI chuẩn đang đặt ở bảng trên, chọn tháng bắt đầu rồi bấm Áp dụng. Chỉ đổi cột KPI chuẩn, không đổi số lượng. Mọi thay đổi đều được ghi vào nhật ký."),
+        h("div",{class:"row",style:"margin-top:10px"},h("label",{class:"field"},"Áp dụng từ tháng",fromSel),
+          h("button",{class:"btn",type:"button",style:"align-self:flex-end",onclick:async e=>{
+            if(dmDirty()){toast("Bảng phòng ban còn thay đổi chưa lưu. Bấm Lưu trước rồi mới Áp dụng.");return;}
+            const btn=e.currentTarget;btn.disabled=true;
+            try{await loadLatest();const rows=plan(fromSel.value);
+              if(!rows.length){toast("Không có dòng nào cần đổi.");btn.disabled=false;showPlan();return;}
+              if(!confirm(`Đổi KPI chuẩn cho ${rows.length} dòng số liệu từ ${monthLabel(fromSel.value).toLowerCase()} trở đi?`)){btn.disabled=false;return;}
+              for(let i=0;i<rows.length;i+=300)await saveKpiRows(rows.slice(i,i+300),[]);
+              S.ent=null;toast(`Đã áp dụng KPI chuẩn mới cho ${rows.length} dòng.`);render();}
+            catch(err){toast(errMsg(err));btn.disabled=false;}}},"Áp dụng")),preview));}
     out.append(saveBtn("pb",async()=>{if(D.pb.some(p=>!(p.ten||"").trim())){toast("Mỗi phòng ban cần có tên.");return;}
       try{await loadLatest();const r=mergeList(S.pb,D.pb,D.del.pb,x=>x.id,PB_F);await saveCfg2("phongban",r.list.map(p=>({...clean(p),ten:(p.ten||"").trim()})));
         if(D.dirty.nv){const rn=mergeList(S.nv,D.nv,D.del.nv,x=>fold(x.ma),NV_F);await saveCfg2("nhanvien",rn.list.map(clean));}S.dm=null;S.ent=null;toast("Đã lưu phòng ban.");render();}catch(e){toast(errMsg(e));}}));}
