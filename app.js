@@ -719,17 +719,23 @@ function openEnt(thang){
   const map=new Map();
   for(const n of S.nv){const ex=S.kpi.get(thang+"|"+n.ma);const p=pbById(n.pb);
     map.set(n.ma,{ma:n.ma,ten:n.ten,pb:p?p.ten:(ex?ex.pb:""),chuan:ex&&ex.chuan!=null?ex.chuan:(p&&p.chuan!=null&&p.chuan!==""?+p.chuan:null),
-      sl:{...(ex?ex.sl:{})},nghi:ex?ex.nghi:null,truc:ex?ex.truc:null,exists:!!ex});}
-  for(const r of S.kpi.values())if(r.thang===thang&&!map.has(r.ma))map.set(r.ma,{ma:r.ma,ten:r.ten,pb:r.pb,chuan:r.chuan,sl:{...r.sl},nghi:r.nghi,truc:r.truc,exists:true,old:true});
+      sl:{...(ex?ex.sl:{})},nghi:ex?ex.nghi:null,truc:ex?ex.truc:null,exists:!!ex,baseAt:ex?ex.at||null:null,_chg:new Set()});}
+  for(const r of S.kpi.values())if(r.thang===thang&&!map.has(r.ma))map.set(r.ma,{ma:r.ma,ten:r.ten,pb:r.pb,chuan:r.chuan,sl:{...r.sl},nghi:r.nghi,truc:r.truc,exists:true,old:true,baseAt:r.at||null,_chg:new Set()});
   let rows=[...map.values()];const ord=pbOrder();
   rows.sort((a,b)=>{const ia=ord.indexOf(a.pb),ib=ord.indexOf(b.pb);return (ia<0?999:ia)-(ib<0?999:ib)||String(a.ma).localeCompare(String(b.ma),"vi",{numeric:true});});
-  let draft=null;try{draft=JSON.parse(lsGet("kpi:draft2:"+thang)||"null");}catch(e){}
-  if(draft)rows.forEach(r=>{const d=draft[r.ma];if(d){r.sl={...d.sl};r.nghi=d.nghi;r.truc=d.truc;}});
-  S.ent={thang,rows,dirty:!!draft,draft:!!draft,saving:false,confirmDel:false};}
+  // bản nháp chỉ chứa những ô người dùng đã sửa, áp lên số mới nhất
+  let draft=null;try{draft=JSON.parse(lsGet("kpi:draft3:"+thang)||"null");}catch(e){}
+  let nd=0;
+  if(draft&&draft.rows)rows.forEach(r=>{const d=draft.rows[r.ma];if(!d||!Array.isArray(d.chg))return;
+    for(const k of d.chg){if(k.startsWith("sl:")){const dm=k.slice(3);const v=d.sl?d.sl[dm]:null;if(v==null||v==="")delete r.sl[dm];else r.sl[dm]=v;}
+      else if(k==="nghi")r.nghi=d.nghi;else if(k==="truc")r.truc=d.truc;r._chg.add(k);}nd++;});
+  S.ent={thang,rows,dirty:nd>0,draft:nd>0,saving:false,confirmDel:false};}
 function entFilled(r){return Object.values(r.sl||{}).some(v=>v!=null&&v!=="")||(r.nghi!=null&&r.nghi!=="")||(r.truc!=null&&r.truc!=="");}
 let entTimer=null;
 function entTouch(){const E=S.ent;E.dirty=true;clearTimeout(entTimer);
-  entTimer=setTimeout(()=>{const d={};E.rows.forEach(r=>{if(entFilled(r))d[r.ma]={sl:r.sl,nghi:r.nghi,truc:r.truc};});lsSet("kpi:draft2:"+E.thang,JSON.stringify(d));},400);entSummary();}
+  entTimer=setTimeout(()=>{const d={};E.rows.forEach(r=>{if(r._chg&&r._chg.size){const sl={};for(const k of r._chg)if(k.startsWith("sl:"))sl[k.slice(3)]=r.sl[k.slice(3)]??null;
+      d[r.ma]={chg:[...r._chg],sl,nghi:r.nghi,truc:r.truc};}});
+    if(Object.keys(d).length)lsSet("kpi:draft3:"+E.thang,JSON.stringify({at:new Date().toISOString(),rows:d}));else lsDel("kpi:draft3:"+E.thang);},400);entSummary();}
 function entSummary(){const E=S.ent,el=document.getElementById("ent-sum");if(!E||!el)return;
   const filled=E.rows.filter(entFilled);const cs=filled.map(r=>calc({...r,thang:E.thang,cong:null}));
   const ok=cs.filter(c=>c.pass===true).length,bad=cs.filter(c=>c.pass===false).length;
@@ -761,12 +767,12 @@ function viewEnt(){
     h("div",{class:"dateinfo"},h("div",{class:"dname"},monthLabel(E.thang)),h("span",{class:"chip "+(E.draft?"warn":E.rows.some(r=>r.exists)?"info":"ok")},E.draft?"Đang dùng bản nháp chưa lưu":E.rows.some(r=>r.exists)?"Tháng đã có số liệu, đang sửa":"Tháng mới")),congBox));
   const q=fold(S.entQ||""),pbF=S.entPb||"";
   out.append(h("div",{class:"etools"},h("input",{type:"search",placeholder:"Lọc mã hoặc tên…","aria-label":"Lọc nhân viên",value:S.entQ||"",oninput:e=>{S.entQ=e.target.value;filterEnt();}}),
-    deptSelect(pbF,v=>{S.entPb=v;filterEnt();}),E.draft&&!ro?h("button",{class:"ghost",type:"button",onclick:()=>{lsDel("kpi:draft2:"+E.thang);S.ent=null;render();}},"Bỏ bản nháp"):null,
+    deptSelect(pbF,v=>{S.entPb=v;filterEnt();}),E.draft&&!ro?h("button",{class:"ghost",type:"button",onclick:()=>{lsDel("kpi:draft3:"+E.thang);S.ent=null;render();}},"Bỏ bản nháp"):null,
     h("span",{class:"spacer"}),h("span",{class:"small faint"},"Nhấn Enter để sang ô kế tiếp. Bản nháp tự giữ trên máy này.")));
   const head=h("tr",{},h("th",{class:"l"},"Mã"),h("th",{class:"l"},"Nhân viên"),dv.map(d=>h("th",{title:d.ten},d.ten)),h("th",{},"KPI tháng"),h("th",{},"Ngày nghỉ"),h("th",{},"Công TT"),h("th",{},"TB/ngày"),h("th",{},"Chuẩn"),h("th",{class:"c"},"Kết quả"),h("th",{},"So T.trước"),h("th",{},"Giờ trực"));
   const body=h("tbody",{});let lastPb=null;
-  const inp=(get,set,lab,r,upd)=>h("input",{type:"number",step:"any",min:"0",inputmode:"decimal",class:"cell-in","data-nav":"",disabled:ro,"aria-label":lab+" của "+r.ten,value:get()==null?"":String(get()),
-    oninput:e=>{const v=e.target.value.trim();set(v===""?null:Number(v));upd();entTouch();}});
+  const inp=(get,set,lab,r,upd,key)=>h("input",{type:"number",step:"any",min:"0",inputmode:"decimal",class:"cell-in","data-nav":"",disabled:ro,"aria-label":lab+" của "+r.ten,value:get()==null?"":String(get()),
+    oninput:e=>{const v=e.target.value.trim();set(v===""?null:Number(v));r._chg.add(key);upd();entTouch();}});
   E.rows.forEach(r=>{
     if(r.pb!==lastPb){lastPb=r.pb;body.append(h("tr",{class:"grp","data-pb":r.pb||""},h("td",{class:"l",colspan:String(10+dv.length)},h("strong",{},r.pb||"(chưa có phòng ban)"))));}
     const cTot=h("td",{}),cTT=h("td",{}),cAvg=h("td",{class:"tb"}),cKq=h("td",{class:"c"}),cPct=h("td",{});
@@ -775,8 +781,8 @@ function viewEnt(){
       const p=S.kpi.get(shiftMonth(E.thang,-1)+"|"+r.ma);const pt=p?calc(p).total:0;cPct.replaceChildren(f&&pt>0?pctEl(c.total/pt*100):h("span",{class:"delta none"},"—"));};
     upd();
     body.append(h("tr",{"data-ma":fold(r.ma),"data-ten":fold(r.ten),"data-pb":r.pb||""},h("td",{class:"l mono"},r.ma),h("td",{class:"l"},h("div",{class:"who-cv"},who(r.ten),cvTag(r.ma),r.old?h("span",{class:"tag"},"không còn trong danh sách"):null)),
-      dv.map(d=>h("td",{},inp(()=>r.sl[d.ma],v=>{if(v==null)delete r.sl[d.ma];else r.sl[d.ma]=v;},d.ten,r,upd))),
-      cTot,h("td",{},inp(()=>r.nghi,v=>{r.nghi=v;},"Ngày nghỉ",r,upd)),cTT,cAvg,h("td",{},fmt(r.chuan)),cKq,cPct,h("td",{},inp(()=>r.truc,v=>{r.truc=v;},"Giờ trực",r,upd))));});
+      dv.map(d=>h("td",{},inp(()=>r.sl[d.ma],v=>{if(v==null)delete r.sl[d.ma];else r.sl[d.ma]=v;},d.ten,r,upd,"sl:"+d.ma))),
+      cTot,h("td",{},inp(()=>r.nghi,v=>{r.nghi=v;},"Ngày nghỉ",r,upd,"nghi")),cTT,cAvg,h("td",{},fmt(r.chuan)),cKq,cPct,h("td",{},inp(()=>r.truc,v=>{r.truc=v;},"Giờ trực",r,upd,"truc"))));});
   const table=h("table",{class:"grid kt-entry"},h("thead",{},head),body);
   table.addEventListener("keydown",e=>{if(e.key!=="Enter"||!e.target.matches("[data-nav]"))return;e.preventDefault();
     const all=[...table.querySelectorAll("tr:not([hidden]) input[data-nav]:not(:disabled)")];const i=all.indexOf(e.target);if(all[i+1]){all[i+1].focus();all[i+1].select();}});
@@ -785,7 +791,7 @@ function viewEnt(){
   if(!ro)out.append(h("div",{class:"savebar"},h("div",{class:"progress",id:"ent-sum"}),
     isAdmin()&&E.rows.some(r=>r.exists)?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!E.confirmDel){E.confirmDel=true;render();return;}
       try{S.busy=true;await sbRpc("kpi_delete_kpi",{p_thang:E.thang,p_ma_nv:null});for(const k of [...S.kpi.keys()])if(k.startsWith(E.thang+"|"))S.kpi.delete(k);
-        lsDel("kpi:draft2:"+E.thang);rebuild();S.ent=null;toast("Đã xóa số liệu "+monthLabel(E.thang).toLowerCase()+".");render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},E.confirmDel?"Bấm lần nữa để xóa cả tháng":"Xóa cả tháng"):null,
+        lsDel("kpi:draft3:"+E.thang);rebuild();S.ent=null;toast("Đã xóa số liệu "+monthLabel(E.thang).toLowerCase()+".");render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},E.confirmDel?"Bấm lần nữa để xóa cả tháng":"Xóa cả tháng"):null,
     h("button",{class:"btn",type:"button",disabled:E.saving,onclick:saveEnt},E.saving?"Đang lưu…":"Lưu "+monthLabel(E.thang).toLowerCase())));
   S.after.push(()=>{entSummary();filterEnt();});
   return out;}
@@ -799,15 +805,25 @@ async function saveKpiRows(rows,dels){
   }finally{S.busy=false;}
   const by=S.me?(S.me.ho_ten||S.me.email):"";const at=new Date().toISOString();
   rows.forEach(r=>S.kpi.set(r.thang+"|"+r.ma,{...r,by,at}));(dels||[]).forEach(([th,ma])=>S.kpi.delete(th+"|"+ma));rebuild();}
+async function loadLatest(){if(!USE_SB)return;const j=await sbRpc("kpi_load",{});if(j&&+j.schema>=5){applyKpiLoad(j);S.version=j.version||S.version;rebuild();}}
 async function saveEnt(){
-  const E=S.ent;const cs=congSet(E.thang);const old=(S.kmonths.get(E.thang)||[]).find(r=>validNum(r.cong));const cc=cs!=null?cs:old?+old.cong:congDefault();
-  const rows=E.rows.filter(entFilled).map(r=>({thang:E.thang,ma:r.ma,ten:r.ten,pb:r.pb||"",sl:Object.fromEntries(Object.entries(r.sl).filter(([,v])=>v!=null&&v!=="")),
-    nghi:+r.nghi||0,truc:+r.truc||0,cong:cc,chuan:r.chuan}));
-  const dels=E.rows.filter(r=>r.exists&&!entFilled(r)).map(r=>[E.thang,r.ma]);
-  if(!rows.length&&!dels.length){toast("Chưa có ai được nhập số liệu.");return;}
+  const E=S.ent;const changed=E.rows.filter(r=>r._chg&&r._chg.size);
+  if(!changed.length){toast("Chưa có ô nào được sửa nên không có gì để lưu.");return;}
   E.saving=true;render();
-  try{await saveKpiRows(rows,dels);clearTimeout(entTimer);lsDel("kpi:draft2:"+E.thang);S.ent=null;
-    toast(`Đã lưu ${rows.length} nhân viên cho ${monthLabel(E.thang).toLowerCase()}.`);render();}
+  try{
+    await loadLatest();                       // lấy số mới nhất, tránh ghi đè số người khác vừa nhập
+    const cs=congSet(E.thang),rows=[],dels=[];let merged=0;
+    for(const r of changed){const base=S.kpi.get(E.thang+"|"+r.ma);
+      if(base&&(base.at||null)!==(r.baseAt||null))merged++;
+      const m={thang:E.thang,ma:r.ma,ten:r.ten||(base?base.ten:""),pb:r.pb||(base?base.pb:""),sl:{...(base?base.sl:{})},
+        nghi:base?+base.nghi||0:0,truc:base?+base.truc||0:0,
+        cong:cs!=null?cs:base&&validNum(base.cong)?+base.cong:congDefault(),chuan:base&&base.chuan!=null?base.chuan:r.chuan};
+      for(const k of r._chg){if(k.startsWith("sl:")){const dm=k.slice(3);const v=r.sl[dm];if(v==null||v==="")delete m.sl[dm];else m.sl[dm]=+v;}
+        else if(k==="nghi")m.nghi=+r.nghi||0;else if(k==="truc")m.truc=+r.truc||0;}
+      const empty=!Object.keys(m.sl).length&&!m.nghi&&!m.truc;
+      if(empty){if(base)dels.push([E.thang,r.ma]);}else rows.push(m);}
+    await saveKpiRows(rows,dels);clearTimeout(entTimer);lsDel("kpi:draft3:"+E.thang);S.ent=null;
+    toast(`Đã lưu ${rows.length+dels.length} nhân viên cho ${monthLabel(E.thang).toLowerCase()}.`+(merged?` Có ${merged} người vừa được người khác cập nhật, web đã giữ số của họ và chỉ thay các ô bạn sửa.`:""));render();}
   catch(e){E.saving=false;toast(errMsg(e));render();}}
 
 /* ----- nhập từ file / dán ----- */
@@ -875,7 +891,7 @@ function viewImpPreview(){
       h("td",{},fmt(c.total,0)),h("td",{},fmt(c.nghi,1)),h("td",{},fmt(c.avg)),h("td",{class:"c"},kqChip(c)),h("td",{},fmt(c.truc,1)));}))))));
   out.append(h("div",{class:"savebar"},h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:()=>{S.imp=null;render();}},"Hủy"),
     h("button",{class:"btn",type:"button",disabled:!R.rows.length||I.saving||!writable(),onclick:async()=>{I.saving=true;render();lsSet("kpi:map2",JSON.stringify(I.map));
-      try{await saveKpiRows(R.rows.map(({exists,...r})=>r),[]);S.imp=null;S.month=months[months.length-1]||S.month;S.ent=null;toast(`Đã lưu ${R.rows.length} dòng.`);go("tonghop");}
+      try{await loadLatest();const R2=impRows(I);await saveKpiRows(R2.rows.map(({exists,...r})=>r),[]);S.imp=null;S.month=months[months.length-1]||S.month;S.ent=null;toast(`Đã lưu ${R.rows.length} dòng.`);go("tonghop");}
       catch(e){I.saving=false;toast(errMsg(e));render();}}},I.saving?"Đang lưu…":`Lưu ${R.rows.length} dòng`)));
   return out;}
 function downloadTemplate2(){if(!window.XLSX){toast("Không tải được thư viện Excel.");return;}
@@ -1070,6 +1086,7 @@ async function init(){
   render();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{if(S.view!=="nhap"&&S.view!=="danhmuc")render();});
   S.lsOK=storageOK();
+  try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("kpi:draft2:"))localStorage.removeItem(k);}}catch(e){}
   if(USE_SB){S.mode="remote";loadSess();const r=handleAuthRedirect();if(r==="recovery"||r==="error"){render();return;}
     await enterApp();if(S.welcome&&!S.gate){toast(S.welcome);S.welcome=null;}return;}
   S.status="local";render();
