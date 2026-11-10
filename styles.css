@@ -510,3 +510,31 @@ td.hc.yr{background:var(--brand-soft);color:var(--brand)}
 .cal-grid .cd:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .cal-foot{display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 .unsaved{color:var(--warn);font-weight:700}
+/* ===== Danh mục: căn thẳng hàng, gọn cột ===== */
+.dm-tbl th,.dm-tbl td{text-align:left!important;vertical-align:middle}
+.dm-tbl td.small{white-space:nowrap}
+.dm-pb th:nth-child(1),.dm-pb td:nth-child(1){width:55%}
+.dm-pb th:nth-child(2),.dm-pb td:nth-child(2){width:180px}
+.dm-pb th:last-child,.dm-pb td:last-child,.dm-dv th:last-child,.dm-dv td:last-child{width:1%;text-align:right!important}
+.dm-dv th:nth-child(1),.dm-dv td:nth-child(1){width:150px}
+.dm-cong td input{width:110px!important}
+/* bảng nhân viên gọn hơn */
+.dm-nv td{padding:6px 4px}
+.dm-nv th{padding:8px 4px}
+.dm-nv input.mono{width:82px!important}
+.dm-nv td:nth-child(2) input{min-width:170px!important}
+.dm-nv select{min-width:0!important;width:auto;max-width:170px;padding-right:24px}
+.dm-nv .dmy-wrap input.dmy{width:128px!important;padding-right:30px}
+.dm-nv input,.dm-nv select{font-size:13.5px;min-height:36px}
+.dm-nv input.mono{width:78px!important;padding:6px 8px}
+.dm-nv td:nth-child(2) input{min-width:155px!important;padding:6px 8px}
+.dm-nv td:nth-child(3) select{width:150px;max-width:150px}
+.dm-nv td:nth-child(4) select{width:116px;max-width:116px}
+.dm-nv td:nth-child(5) select{width:108px;max-width:108px}
+.dm-nv .dmy-wrap input.dmy{width:116px!important;padding:6px 28px 6px 8px}
+.dm-nv .dmy-btn{width:24px;height:24px;right:3px}
+.dm-nv .sen{font-size:11.5px;color:var(--muted);margin:3px 0 0 2px;white-space:nowrap}
+.dm-nv td:nth-child(4) select{width:130px;max-width:130px}
+.dm-nv td:nth-child(5) select{width:114px;max-width:114px}
+.dm-nv .dmy-wrap input.dmy{width:124px!important;letter-spacing:0;padding:6px 28px 6px 8px}
+.dm-nv td:nth-child(5) select{width:124px;max-width:124px}
