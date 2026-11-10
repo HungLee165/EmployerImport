@@ -538,3 +538,6 @@ td.hc.yr{background:var(--brand-soft);color:var(--brand)}
 .dm-nv td:nth-child(5) select{width:114px;max-width:114px}
 .dm-nv .dmy-wrap input.dmy{width:124px!important;letter-spacing:0;padding:6px 28px 6px 8px}
 .dm-nv td:nth-child(5) select{width:124px;max-width:124px}
+.dm-nv td:nth-child(6) select{width:92px;max-width:92px}
+.dm-nv{min-width:1240px}
+.dm-nv-panel{width:100%;}
