@@ -1156,6 +1156,7 @@ function render(){
     const f=document.querySelector(".auth-card input:not([type=hidden])");if(f&&!f.value)setTimeout(()=>f.focus(),30);return;}
   renderNav();destroyCharts();S.after=[];
   const wrap=h("div",{class:"stack"});const b=statusBanner();if(b)wrap.append(b);
+  if(S.status==="ready"&&S.authMode!==undefined){const gr=greetEl();if(gr)wrap.append(gr);}
   if(S.status==="ready"){const fn={tonghop:viewTongHop,phongban:viewPhongBan,dichvu:viewDichVu,nhap:viewNhap,danhmuc:viewDanhMuc,caidat:viewSettings,taikhoan:viewAccounts,them:viewMore}[S.view]||viewTongHop;wrap.append(fn());}
   document.getElementById("main").replaceChildren(wrap);chartDefaults();renderSync();
   S.after.forEach(f=>f());S.after=[];}
@@ -1171,6 +1172,30 @@ function statusBanner(){
   return null;}
 function emptyState(){return h("div",{class:"panel empty"},h("div",{class:"logo","aria-hidden":"true"}),h("h2",{},"Chưa có số liệu KPI"),
   h("p",{class:"muted"},"Nhập KPI tháng bằng tay, hoặc tải file Excel theo mẫu."),h("button",{class:"btn",type:"button",onclick:()=>go("nhap")},"Nhập KPI tháng"));}
+
+/* ---------- lời chào theo buổi ---------- */
+function greetInfo(d){d=d||new Date();const m=d.getHours()*60+d.getMinutes(),wd=d.getDay(),dd=d.getDate(),mm=d.getMonth()+1;
+  const p=m>=300&&m<660?"morning":m>=660&&m<810?"noon":m>=810&&m<1080?"afternoon":m>=1080&&m<1320?"evening":"night";
+  const name=S.me&&S.me.ho_ten?S.me.ho_ten.trim().split(/\s+/).pop():"";const hi=name?", "+name:"";
+  const base={morning:["☀️",`Chào buổi sáng${hi}!`,"Chúc bạn một ngày mới tốt lành và tràn đầy năng lượng."],
+    noon:["🍱",`Chào buổi trưa${hi}!`,"Nhớ ăn trưa và nghỉ ngơi một chút nhé."],
+    afternoon:["☕",`Chào buổi chiều${hi}!`,"Chúc bạn buổi chiều làm việc vui vẻ."],
+    evening:["🌙",`Chào buổi tối${hi}!`,"Cảm ơn bạn đã vất vả cả ngày hôm nay."],
+    night:["🌟",`Khuya rồi${hi}!`,"Nhớ nghỉ ngơi sớm để giữ sức khỏe nhé."]}[p];
+  let [icon,title,msg]=base;
+  if(wd===1&&p==="morning")msg="Đầu tuần rồi, chúc bạn một tuần mới thật năng lượng!";
+  else if(wd===5&&(p==="afternoon"||p==="evening"))msg="Chiều thứ Sáu rồi, cố lên, cuối tuần sắp tới!";
+  else if((wd===6||wd===0)&&p!=="night")msg="Cuối tuần vẫn ghé làm việc, cảm ơn bạn nhiều nhé!";
+  const sp={"1-1":["🎆","Chúc mừng năm mới! Chúc bạn một năm thật nhiều niềm vui và thành công."],"14-2":["💝","Chúc bạn một ngày Valentine thật ngọt ngào!"],
+    "8-3":["🌷","Chúc mừng ngày Quốc tế Phụ nữ 8/3!"],"30-4":["🇻🇳","Chúc mừng ngày Giải phóng miền Nam 30/4!"],"1-5":["🛠️","Chúc mừng ngày Quốc tế Lao động 1/5!"],
+    "2-9":["🇻🇳","Chúc mừng Quốc khánh 2/9!"],"20-10":["💐","Chúc mừng ngày Phụ nữ Việt Nam 20/10!"],"20-11":["📚","Chúc mừng ngày Nhà giáo Việt Nam 20/11!"],
+    "24-12":["🎄","Đêm Giáng sinh an lành và ấm áp nhé!"],"25-12":["🎄","Chúc bạn Giáng sinh an lành!"],"31-12":["🎉","Ngày cuối năm rồi, cảm ơn bạn đã đồng hành suốt một năm qua!"]}[`${dd}-${mm}`];
+  if(sp){icon=sp[0];msg=sp[1];}
+  return {p,icon,title,msg,key:p+"|"+todayISO()};}
+function greetEl(){const g=greetInfo();if(lsGet("kpi:greet-hide")===g.key)return null;
+  return h("div",{class:"greet g-"+g.p,id:"greet",role:"status"},h("span",{class:"g-ic","aria-hidden":"true"},g.icon),
+    h("div",{class:"g-txt"},h("strong",{},g.title),h("span",{},g.msg)),
+    h("button",{class:"g-x",type:"button","aria-label":"Ẩn lời chào",title:"Ẩn đến buổi sau",onclick:()=>{lsSet("kpi:greet-hide",g.key);const el=document.getElementById("greet");if(el)el.remove();}},"×"));}
 
 /* ---------- bông tuyết ---------- */
 const SNOW={on:false,cv:null,ctx:null,fl:[],raf:0,w:0,h:0,spr:null,dark:false};
@@ -1218,6 +1243,8 @@ async function init(){
   document.getElementById("cta").addEventListener("click",()=>{S.month=thisMonth();S.ent=null;S.nhapMode="tay";go("nhap");});
   document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>{setSnow(!SNOW.on,true);toast(SNOW.on?"Đã bật tuyết rơi ❄":"Đã tắt tuyết rơi");}));
   setSnow(snowPref(),false);
+  setInterval(()=>{const el=document.getElementById("greet");if(!el)return;const g=greetInfo();
+    if(!el.classList.contains("g-"+g.p)||el.querySelector(".g-txt span").textContent!==g.msg){const n=greetEl();if(n)el.replaceWith(n);else el.remove();}},60000);
   render();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{if(S.view!=="nhap"&&S.view!=="danhmuc")render();});
   S.lsOK=storageOK();
