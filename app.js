@@ -949,7 +949,7 @@ function downloadTemplate2(){if(!window.XLSX){toast("Không tải được thư 
    DANH MỤC: nhân viên, dịch vụ, phòng ban, công chuẩn
    ===================================================================== */
 const ch=(o,f)=>{(o._chg||(o._chg=new Set())).add(f);};
-const NV_F=["ma","ten","pb","cv","kv","ns","ntv","nct"],DV_F=["ma","ten"],PB_F=["id","ten","chuan"];
+const NV_F=["ma","ten","pb","cv","kv","ns","ntv","nct"],DV_F=["ma","ten"],PB_F=["id","ten","chuan"],CAP_DO=["L1","L2","L3","L4","L5"];
 const clean=o=>Object.fromEntries(Object.entries(o).filter(([k])=>!k.startsWith("_")));
 // Ghép thay đổi của mình vào danh sách MỚI NHẤT trên máy chủ: chỉ thay đúng ô đã sửa
 function mergeList(latest,draft,dels,keyF,fields){let lost=0;
@@ -962,7 +962,7 @@ function mergeList(latest,draft,dels,keyF,fields){let lost=0;
     d._chg.forEach(f=>{out[i][f]=d[f];});}
   return {list:out,lost};}
 function dmDirty(){return !!(S.dm&&Object.values(S.dm.dirty).some(Boolean));}
-function dmInit(){if(S.dm)return;S.dm={nv:S.nv.map(n=>({...n,_id:uid2(),_k0:fold(n.ma),_chg:new Set()})),dv:S.dv.map(d=>({...d,_id:uid2(),_saved:true,_k0:d.ma,_chg:new Set()})),
+function dmInit(){if(S.dm)return;S.dm={nv:S.nv.map(n=>({...n,capdo:null,_id:uid2(),_k0:fold(n.ma),_chg:new Set()})),dv:S.dv.map(d=>({...d,_id:uid2(),_saved:true,_k0:d.ma,_chg:new Set()})),
   pb:S.pb.map(p=>({...p,_k0:p.id,_chg:new Set()})),del:{nv:new Set(),dv:new Set(),pb:new Set()},dvOrder:false,
   cong:{macdinh:S.cong.macdinh??null,override:{...(S.cong.override||{})}},dirty:{}};}
 function viewDanhMuc(){
@@ -975,25 +975,28 @@ function viewDanhMuc(){
     tab==="nv"?(()=>{const s=h("select",{"aria-label":"Lọc theo khu vực",class:"cv-filter",onchange:e=>{S.dmKv=e.target.value;render();}},
       h("option",{value:""},"Tất cả khu vực"),KHU_VUC.map(c=>h("option",{value:c},`${c} (${D.nv.filter(n=>n.kv===c).length})`)),
       h("option",{value:"_none"},`Chưa chọn khu vực (${D.nv.filter(n=>!n.kv).length})`));s.value=S.dmKv||"";return s;})():null,
+    tab==="nv"?(()=>{const s=h("select",{"aria-label":"Lọc theo cấp độ",class:"cv-filter",onchange:e=>{S.dmCapdo=e.target.value;render();}},h("option",{value:""},"Tất cả cấp độ"),...CAP_DO.map(c=>h("option",{value:c},`${c} (${D.nv.filter(n=>n.capdo===c).length})`)),h("option",{value:"_none"},`Chưa chọn cấp độ (${D.nv.filter(n=>!n.capdo).length})`));s.value=S.dmCapdo||"";return s;})():null,
     h("span",{class:"spacer"}),ro?h("span",{class:"small muted"},"Chỉ Quản lý sửa được danh mục."):null));
   const mark=k=>{D.dirty[k]=true;const b=document.getElementById("dm-save");if(b)b.disabled=false;
     const s=document.getElementById("dm-state");if(s){s.textContent="⚠ Có thay đổi chưa lưu, nhớ bấm Lưu";s.className="small unsaved";}};
   const saveBtn=(k,fn)=>ro?null:h("div",{class:"savebar"},h("span",{id:"dm-state",class:"small "+(D.dirty[k]?"unsaved":"muted"),style:"flex:1"},D.dirty[k]?"⚠ Có thay đổi chưa lưu, nhớ bấm Lưu":"Chưa có thay đổi"),
     h("button",{class:"ghost",type:"button",onclick:()=>{S.dm=null;render();}},"Hoàn tác"),h("button",{class:"btn",type:"button",id:"dm-save",disabled:!D.dirty[k],onclick:fn},"Lưu"));
   if(tab==="nv"){
-    const q=fold(S.dmQ||""),cvF=S.dmCv||"",kvF=S.dmKv||"";const pbOpts=()=>[h("option",{value:""},"(chọn phòng ban)"),...D.pb.map(p=>h("option",{value:p.id},p.ten))];
+    const q=fold(S.dmQ||""),cvF=S.dmCv||"",kvF=S.dmKv||"",capdoF=S.dmCapdo||"";const pbOpts=()=>[h("option",{value:""},"(chọn phòng ban)"),...D.pb.map(p=>h("option",{value:p.id},p.ten))];
+    const capdoOpts=()=>[h("option",{value:""},"(chọn cấp độ)"),...CAP_DO.map(c=>h("option",{value:c},c))];
     const cvOpts=()=>[h("option",{value:""},"(chọn)"),...CHUC_VU.map(c=>h("option",{value:c},c))];
     const kvOpts=()=>[h("option",{value:""},"(chọn)"),...KHU_VUC.map(c=>h("option",{value:c},c))];
-    const rows=D.nv.filter(n=>(!q||fold(n.ma).includes(q)||fold(n.ten).includes(q))&&(!cvF||(cvF==="_none"?!n.cv:n.cv===cvF))&&(!kvF||(kvF==="_none"?!n.kv:n.kv===kvF)));
+    const rows=D.nv.filter(n=>(!q||fold(n.ma).includes(q)||fold(n.ten).includes(q))&&(!cvF||(cvF==="_none"?!n.cv:n.cv===cvF))&&(!kvF||(kvF==="_none"?!n.kv:n.kv===kvF))&&(!capdoF||(capdoF==="_none"?!n.capdo:n.capdo===capdoF)));
     const tb=h("tbody",{},rows.map(n=>{
       const sel=h("select",{disabled:ro,"aria-label":"Phòng ban của "+n.ten,onchange:e=>{n.pb=e.target.value||null;ch(n,"pb");mark("nv");}},pbOpts());sel.value=n.pb||"";
       const cv=h("select",{disabled:ro,"aria-label":"Chức vụ của "+n.ten,onchange:e=>{n.cv=e.target.value||null;ch(n,"cv");mark("nv");}},cvOpts());cv.value=n.cv||"";
       const kvSel=h("select",{disabled:ro,"aria-label":"Khu vực của "+n.ten,onchange:e=>{n.kv=e.target.value||null;ch(n,"kv");mark("nv");}},kvOpts());kvSel.value=n.kv||"";
+      const capdoSel=h("select",{disabled:ro,"aria-label":"Cấp độ của "+n.ten,onchange:e=>{n.capdo=e.target.value||null;mark("nv");}},capdoOpts());capdoSel.value=n.capdo||"";
       const sen=h("div",{class:"sen",title:"Thâm niên = Ngày hiện tại − Ngày chính thức"},seniority(n.nct));
       const setD=(k,lab)=>v=>{n._bad=n._bad||{};if(v===undefined){n._bad[k]=true;return;}delete n._bad[k];n[k]=v;ch(n,k);mark("nv");sen.textContent=seniority(n.nct);};
       return h("tr",{},h("td",{},h("input",{type:"text",value:n.ma,disabled:ro,class:"mono",style:"width:100px","aria-label":"Mã NV",oninput:e=>{n.ma=e.target.value.trim();ch(n,"ma");mark("nv");}})),
         h("td",{},h("input",{type:"text",value:n.ten,disabled:ro,style:"min-width:190px;width:100%","aria-label":"Họ tên",oninput:e=>{n.ten=e.target.value;ch(n,"ten");mark("nv");}})),
-        h("td",{},sel),h("td",{},cv),h("td",{},kvSel),
+        h("td",{},sel),h("td",{},cv),h("td",{},capdoSel),h("td",{},kvSel),
         h("td",{},dateBox(n.ns,setD("ns"),"Ngày sinh",ro)),
         h("td",{},dateBox(n.ntv,setD("ntv"),"Ngày thử việc",ro)),
         h("td",{},dateBox(n.nct,setD("nct"),"Ngày chính thức",ro),sen),
@@ -1002,12 +1005,12 @@ function viewDanhMuc(){
     const paste=h("textarea",{placeholder:"Mã NV ⇥ Họ tên ⇥ Phòng ban ⇥ Chức vụ ⇥ Ngày sinh ⇥ Ngày thử việc ⇥ Ngày chính thức ⇥ Khu vực (mỗi người một dòng, copy thẳng từ Excel)","aria-label":"Dán danh sách nhân viên",style:"min-height:110px"});
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Danh sách nhân viên",h("span",{class:"small muted",style:"font-weight:400"},`  ${rows.length}/${D.nv.length} người`)),
         h("div",{class:"row"},h("input",{type:"search",placeholder:"Tìm mã hoặc tên…",value:S.dmQ||"","aria-label":"Tìm nhân viên",oninput:e=>{S.dmQ=e.target.value;clearTimeout(S._dq);S._dq=setTimeout(render,300);}}),
-          ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:D.pb[0]?D.pb[0].id:null,cv:null,kv:null,ns:null,ntv:null,nct:null,_id:uid2(),_k0:null,_chg:new Set(NV_F)});S.dmQ="";S.dmCv="";S.dmKv="";mark("nv");render();
+          ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:D.pb[0]?D.pb[0].id:null,cv:null,capdo:null,kv:null,ns:null,ntv:null,nct:null,_id:uid2(),_k0:null,_chg:new Set(NV_F)});S.dmQ="";S.dmCv="";S.dmKv="";mark("nv");render();
             setTimeout(()=>{const i=document.querySelectorAll(".dm-nv tbody tr:last-child input");i[0]&&i[0].focus();},0);}},"＋ Thêm nhân viên"))),
-      h("div",{class:"scroll"},h("table",{class:"grid dm-nv dm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Họ tên"),h("th",{class:"l"},"Phòng ban"),h("th",{class:"l"},"Chức vụ"),h("th",{class:"l"},"Khu vực"),
+      h("div",{class:"scroll"},h("table",{class:"grid dm-nv dm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Họ tên"),h("th",{class:"l"},"Phòng ban"),h("th",{class:"l"},"Chức vụ"),h("th",{class:"l"},"Cấp độ"),h("th",{class:"l"},"Khu vực"),
         h("th",{class:"l"},"Ngày sinh"),h("th",{class:"l"},"Ngày thử việc"),h("th",{class:"l",title:"Dòng nhỏ bên dưới là thâm niên = Ngày hiện tại − Ngày chính thức"},"Ngày chính thức / Thâm niên"),h("th",{}))),
-        h("tbody",{},rows.length?[...tb.childNodes]:[h("tr",{},h("td",{class:"l",colspan:"9"},h("span",{class:"muted"},"Không có nhân viên nào khớp bộ lọc.")))]))),
-      h("p",{class:"hint",style:"margin-top:10px"},"Ngày nhập dạng dd/mm/yyyy, gõ liền 8 số (ví dụ 15031995) web tự thêm dấu /, hoặc bấm biểu tượng lịch để chọn. Thâm niên = Ngày hiện tại − Ngày chính thức."),
+        h("tbody",{},rows.length?[...tb.childNodes]:[h("tr",{},h("td",{class:"l",colspan:"10"},h("span",{class:"muted"},"Không có nhân viên nào khớp bộ lọc.")))]))),
+      h("p",{class:"hint",style:"margin-top:10px"},"Ngày nhập dạng dd/mm/yyyy, gõ liền 8 số (ví dụ 15031995) web tự thêm dấu /, hoặc bấm biểu tượng lịch để chọn. Thâm niên = Ngày hiện tại − Ngày chính thức. Cấp độ đang là UI-only và chưa được ghi vào Supabase."),
       ro?null:h("details",{class:"fmt-guide"},h("summary",{},"Dán nhanh danh sách từ Excel"),h("div",{class:"stack-s",style:"margin-top:10px"},paste,
         h("p",{class:"hint"},"Thứ tự cột: Mã NV, Họ tên, Phòng ban, Chức vụ, Ngày sinh, Ngày thử việc, Ngày chính thức, Khu vực (Hà Nội, Nam Định, Đà Nẵng, Sài Gòn). Ngày ghi dd/mm/yyyy. Có dòng tiêu đề cũng được. Trùng Mã NV thì cập nhật, phòng ban chưa có thì tự thêm."),
         h("button",{class:"btn",type:"button",onclick:()=>{let n=0,u=0,bad=0;for(const line of paste.value.replace(/\r/g,"").split("\n")){const c=line.split("\t").map(x=>x.trim());
