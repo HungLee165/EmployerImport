@@ -230,7 +230,7 @@ async function saveFile(filename,data,mime){
   setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);}
 
 /* ---------- writes ---------- */
-function writable(){if(S.authMode)return !!S.me&&["nhan_vien","quan_ly"].includes(S.me.vai_tro);return S.canWrite!==false;}
+function writable(){if(S.authMode)return !!S.me&&["nhan_vien","quan_ly","admin"].includes(S.me.vai_tro);return S.canWrite!==false;}
 function isAdmin(){return S.authMode?!!(S.me&&(S.me.vai_tro==="quan_ly"||S.me.vai_tro==="admin")):writable();}
 function isSuperAdmin(){return !!(S.authMode&&S.me&&S.me.vai_tro==="admin");}
 function guard(e){if(e&&e.code==="invalid_argument")S.canWrite=false;}
