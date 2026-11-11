@@ -596,3 +596,20 @@ body.gated{background:radial-gradient(900px 520px at 0% 0%,color-mix(in srgb,var
 .kt-entry td.tgt-cell{background:color-mix(in srgb,var(--brand-soft) 70%,transparent)}
 .kt-entry td.tgt-cell .cell-in{border-color:color-mix(in srgb,var(--brand) 45%,var(--line));font-weight:800;color:var(--brand)}
 .kt-entry thead th:first-child,.kt-entry tbody td.mono{position:static}
+
+/* ===== nền xanh dịu thay cho trắng trơn ===== */
+body{background:
+  radial-gradient(1100px 650px at 100% 0%,rgba(56,182,216,.20),transparent 60%),
+  radial-gradient(950px 650px at 0% 100%,rgba(95,214,160,.18),transparent 60%),
+  radial-gradient(900px 520px at 55% 115%,rgba(39,99,200,.13),transparent 62%),
+  linear-gradient(180deg,#EDF4FC 0%,#E4EEF9 100%);background-attachment:fixed}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) body{background:
+  radial-gradient(1100px 650px at 100% 0%,rgba(56,182,216,.20),transparent 60%),
+  radial-gradient(950px 650px at 0% 100%,rgba(95,214,160,.12),transparent 60%),
+  radial-gradient(900px 520px at 55% 115%,rgba(60,120,255,.18),transparent 62%),
+  linear-gradient(180deg,#071226 0%,#081733 100%);background-attachment:fixed}}
+:root[data-theme="dark"] body{background:linear-gradient(180deg,#071226 0%,#081733 100%);background-attachment:fixed}
+.topbar{background:color-mix(in srgb,#EDF4FC 80%,transparent)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .topbar{background:color-mix(in srgb,#071226 82%,transparent)}}
+@media (max-width:900px){.topbar{background:color-mix(in srgb,var(--surface) 90%,transparent)}}
+.panel{box-shadow:0 1px 2px rgba(11,27,58,.05),0 14px 34px -22px rgba(11,58,134,.35)}

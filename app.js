@@ -1173,28 +1173,42 @@ function emptyState(){return h("div",{class:"panel empty"},h("div",{class:"logo"
   h("p",{class:"muted"},"Nhập KPI tháng bằng tay, hoặc tải file Excel theo mẫu."),h("button",{class:"btn",type:"button",onclick:()=>go("nhap")},"Nhập KPI tháng"));}
 
 /* ---------- bông tuyết ---------- */
-const SNOW={on:false,cv:null,ctx:null,fl:[],raf:0,w:0,h:0};
-const SNOW_COL=["95,214,160","56,182,216","126,179,255","170,230,255"];
+const SNOW={on:false,cv:null,ctx:null,fl:[],raf:0,w:0,h:0,spr:null,dark:false};
 function snowPref(){const v=lsGet("kpi:snow");if(v==="on")return true;if(v==="off")return false;return !matchMedia("(prefers-reduced-motion: reduce)").matches;}
-function newFlake(anyY){return {x:Math.random()*SNOW.w,y:anyY?Math.random()*SNOW.h:-14,r:1.1+Math.random()*2.6,star:Math.random()<.25,sz:4.5+Math.random()*6.5,
-  vy:.25+Math.random()*.75,ph:Math.random()*6.28,amp:.3+Math.random()*.8,rot:Math.random()*6.28,vr:(Math.random()-.5)*.012,a:.22+Math.random()*.33,
-  c:SNOW_COL[Math.floor(Math.random()*SNOW_COL.length)]};}
+// Hạt tuyết vẽ sẵn thành ảnh nhỏ có quầng sáng, để vẽ nhanh khi có nhiều hạt
+function snowSprites(){SNOW.dark=matchMedia("(prefers-color-scheme: dark)").matches&&document.documentElement.dataset.theme!=="light";
+  const cols=SNOW.dark?["255,255,255","225,240,255","200,228,255","190,245,235"]:["120,180,240","90,160,230","110,200,225","170,205,250"];
+  const mk=(col,blur)=>{const s=64,c=document.createElement("canvas");c.width=c.height=s;const g=c.getContext("2d");
+    const gr=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+    if(blur){gr.addColorStop(0,`rgba(${col},.85)`);gr.addColorStop(.35,`rgba(${col},.45)`);gr.addColorStop(1,`rgba(${col},0)`);}
+    else{gr.addColorStop(0,"rgba(255,255,255,1)");gr.addColorStop(.18,`rgba(${col},1)`);gr.addColorStop(.42,`rgba(${col},.55)`);gr.addColorStop(1,`rgba(${col},0)`);}
+    g.fillStyle=gr;g.fillRect(0,0,s,s);return c;};
+  SNOW.spr={sharp:cols.map(c=>mk(c,false)),soft:cols.map(c=>mk(c,true)),line:SNOW.dark?"235,245,255":"95,160,230"};}
+function newFlake(anyY){const t=Math.random();let f;
+  if(t<.55)f={k:"dot",r:1.2+Math.random()*1.0,vy:.35+Math.random()*.45,a:.6+Math.random()*.35};          // hạt li ti ở xa
+  else if(t<.80)f={k:"dot",r:2.6+Math.random()*2.0,vy:.7+Math.random()*.6,a:.65+Math.random()*.3};       // bông vừa
+  else if(t<.88)f={k:"bokeh",r:7+Math.random()*8,vy:1.1+Math.random()*.8,a:.25+Math.random()*.25};      // đốm sáng to, mờ, ở gần
+  else f={k:"star",r:5+Math.random()*6,vy:.6+Math.random()*.6,a:.6+Math.random()*.35,rot:Math.random()*6.28,vr:(Math.random()-.5)*.02}; // bông 6 cánh
+  f.x=Math.random()*SNOW.w;f.y=anyY?Math.random()*SNOW.h:-20;f.ph=Math.random()*6.28;f.amp=.3+Math.random()*.9;f.ci=Math.floor(Math.random()*4);return f;}
 function snowSize(){const c=SNOW.cv;if(!c)return;const dpr=Math.min(window.devicePixelRatio||1,1.5);SNOW.w=innerWidth;SNOW.h=innerHeight;
   c.width=Math.round(SNOW.w*dpr);c.height=Math.round(SNOW.h*dpr);SNOW.ctx.setTransform(dpr,0,0,dpr,0,0);
-  const want=Math.round(Math.min(55,Math.max(18,SNOW.w*SNOW.h/26000)));while(SNOW.fl.length<want)SNOW.fl.push(newFlake(true));SNOW.fl.length=want;}
-function drawFlake(g,f){g.fillStyle=g.strokeStyle=`rgba(${f.c},${f.a})`;
-  if(!f.star){g.beginPath();g.arc(f.x,f.y,f.r,0,6.2832);g.fill();return;}
-  g.save();g.translate(f.x,f.y);g.rotate(f.rot);g.lineWidth=1.25;g.lineCap="round";g.beginPath();
-  for(let i=0;i<6;i++){const a=i*Math.PI/3,L=f.sz,cx=Math.cos(a),sy=Math.sin(a),bx=cx*L*.58,by=sy*L*.58,b=L*.3;
+  const want=Math.round(Math.min(280,Math.max(70,SNOW.w*SNOW.h/5500)));while(SNOW.fl.length<want)SNOW.fl.push(newFlake(true));SNOW.fl.length=want;}
+function drawFlake(g,f){const S=SNOW.spr;g.globalAlpha=f.a;
+  if(f.k==="dot"){const d=f.r*4.2;g.drawImage(S.sharp[f.ci],f.x-d/2,f.y-d/2,d,d);return;}
+  if(f.k==="bokeh"){const d=f.r*3;g.drawImage(S.soft[f.ci],f.x-d/2,f.y-d/2,d,d);return;}
+  const d=f.r*2.6;g.drawImage(S.soft[f.ci],f.x-d/2,f.y-d/2,d,d);
+  g.save();g.translate(f.x,f.y);g.rotate(f.rot);g.strokeStyle=`rgba(${S.line},1)`;g.lineWidth=1.3;g.lineCap="round";g.beginPath();
+  for(let i=0;i<6;i++){const a=i*Math.PI/3,L=f.r,cx=Math.cos(a),sy=Math.sin(a),bx=cx*L*.58,by=sy*L*.58,b=L*.32;
     g.moveTo(0,0);g.lineTo(cx*L,sy*L);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a+.65)*b,by+Math.sin(a+.65)*b);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a-.65)*b,by+Math.sin(a-.65)*b);}
   g.stroke();g.restore();}
 function snowTick(){const g=SNOW.ctx;g.clearRect(0,0,SNOW.w,SNOW.h);
-  for(const f of SNOW.fl){f.y+=f.vy;f.ph+=.012;f.x+=Math.sin(f.ph)*f.amp*.35;f.rot+=f.vr;
-    if(f.y>SNOW.h+14||f.x<-24||f.x>SNOW.w+24)Object.assign(f,newFlake(false));drawFlake(g,f);}
-  SNOW.raf=requestAnimationFrame(snowTick);}
+  for(const f of SNOW.fl){f.y+=f.vy;f.ph+=.01;f.x+=Math.sin(f.ph)*f.amp*.35+.08;if(f.rot!=null)f.rot+=f.vr;
+    if(f.y>SNOW.h+24||f.x<-30||f.x>SNOW.w+30)Object.assign(f,newFlake(false));drawFlake(g,f);}
+  g.globalAlpha=1;SNOW.raf=requestAnimationFrame(snowTick);}
 function setSnow(on,save){SNOW.on=on;if(save)lsSet("kpi:snow",on?"on":"off");
   if(on&&!SNOW.cv){const c=document.createElement("canvas");c.className="snow";c.setAttribute("aria-hidden","true");document.body.prepend(c);
-    SNOW.cv=c;SNOW.ctx=c.getContext("2d");snowSize();window.addEventListener("resize",snowSize);}
+    SNOW.cv=c;SNOW.ctx=c.getContext("2d");snowSprites();snowSize();window.addEventListener("resize",snowSize);
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change",snowSprites);}
   if(SNOW.cv)SNOW.cv.style.display=on?"block":"none";cancelAnimationFrame(SNOW.raf);if(on)SNOW.raf=requestAnimationFrame(snowTick);
   document.querySelectorAll(".snow-tg").forEach(b=>{b.setAttribute("aria-pressed",String(on));b.title=on?"Tắt tuyết rơi":"Bật tuyết rơi";});}
 
