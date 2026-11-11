@@ -538,12 +538,9 @@ td.hc.yr{background:var(--brand-soft);color:var(--brand)}
 .dm-nv td:nth-child(5) select{width:114px;max-width:114px}
 .dm-nv .dmy-wrap input.dmy{width:124px!important;letter-spacing:0;padding:6px 28px 6px 8px}
 .dm-nv td:nth-child(5) select{width:124px;max-width:124px}
-<<<<<<< HEAD
 
 /* ===== tuyết rơi ===== */
-.snow{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:-1}
-body.gated .snow{z-index:1}
-body.gated .auth-card{position:relative;z-index:2}
+.snow{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:15}
 body.gated .auth-wrap{background:transparent}
 body.gated{background:radial-gradient(900px 520px at 0% 0%,color-mix(in srgb,var(--mark) 30%,transparent),transparent 62%),radial-gradient(800px 520px at 100% 100%,color-mix(in srgb,var(--brand) 26%,transparent),transparent 62%),var(--bg);background-attachment:fixed}
 .snow-tg{margin-left:auto;width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--surface);color:var(--teal);font-size:18px;cursor:pointer;display:grid;place-items:center;flex:none}
@@ -592,8 +589,10 @@ body.gated{background:radial-gradient(900px 520px at 0% 0%,color-mix(in srgb,var
 .tn-prev{font-size:11.5px;color:var(--faint)}
 .tn-empty{text-align:center;padding:26px 10px;color:var(--muted)}
 @media (max-width:640px){.tn-item{grid-template-columns:26px 30px minmax(0,1fr) 84px;gap:8px}}
-=======
-.dm-nv td:nth-child(6) select{width:92px;max-width:92px}
-.dm-nv{min-width:1240px}
-.dm-nv-panel{width:100%;}
->>>>>>> b30254b1dee2513181dfb1ee91d762fbcbe639b2
+
+/* màn nhập: cột mục tiêu nổi bật, ô gọn hơn, chỉ cột tên dính trái khi kéo ngang */
+.kt-entry .cell-in{width:74px}
+.kt-entry th.tgt-h{color:var(--brand)}
+.kt-entry td.tgt-cell{background:color-mix(in srgb,var(--brand-soft) 70%,transparent)}
+.kt-entry td.tgt-cell .cell-in{border-color:color-mix(in srgb,var(--brand) 45%,var(--line));font-weight:800;color:var(--brand)}
+.kt-entry thead th:first-child,.kt-entry tbody td.mono{position:static}
