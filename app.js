@@ -593,15 +593,17 @@ function viewTongHop(){
   if(!rowsAll.length){out.append(h("div",{class:"panel empty"},h("div",{class:"big-emoji"},"📭"),h("h2",{},monthLabel(k)+" chưa có số liệu"),
     h("p",{class:"muted"},"Vào Nhập KPI tháng để nhập tay hoặc tải file Excel."),h("button",{class:"btn",type:"button",onclick:()=>go("nhap")},"Nhập KPI tháng")));return out;}
   const cmp=(a,b,c,kind)=>h("div",{class:"cmp"},h("span",{},chg(a,b,kind)," tháng trước"),h("span",{},chg(a,c,kind)," cùng kỳ "+(+k.slice(0,4)-1)));
+  out.append(heroCard(k,pb,T,TP));
   out.append(h("div",{class:"tiles tiles-4"},
     tile("Tổng KPI tháng (case)",fmt(T.total,0),`${T.rows} nhân viên`,cmp(T.total,TP.total||null,TY.total||null,"pct")),
     tile("TB case/ngày chung",fmt(T.avg),T.chuan!=null?"KPI chuẩn TB "+fmt(T.chuan):"\u00a0",cmp(T.avg,TP.avg,TY.avg,"pct")),
     tile("Tỷ lệ đạt",T.rate==null?"—":fmt(T.rate*100,0)+"%",`${T.pass}/${T.judged} người đạt`,cmp(T.rate==null?null:T.rate*100,TP.rate==null?null:TP.rate*100,TY.rate==null?null:TY.rate*100,"pp"),T.rate==null?null:T.rate*100),
     tile("Giờ trực",fmt(T.truc,1),`${fmt(T.tt,1)} công thực tế`,null)));
+  out.append(topNeedPanels(rowsAll));
   const showDv=!!S.showDv&&S.dv.length;
   const dvCols=showDv?S.dv:[];
   const head=h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Nhân viên"),dvCols.map(d=>h("th",{title:d.ten},d.ma)),
-    h("th",{},"KPI tháng"),h("th",{},"Nghỉ"),h("th",{},"Công TT"),h("th",{},"TB/ngày"),h("th",{},"Chuẩn"),h("th",{class:"c"},"Kết quả"),h("th",{},"So T.trước"),h("th",{},"Giờ trực"));
+    h("th",{},"KPI tháng"),h("th",{},"Nghỉ"),h("th",{},"Công TT"),h("th",{},"TB/ngày"),h("th",{title:"KPI mục tiêu của từng người (case/ngày)"},"Mục tiêu"),h("th",{class:"c"},"Kết quả"),h("th",{},"So T.trước"),h("th",{},"Giờ trực"));
   const ncol=10+dvCols.length;const body=[];
   for(const dname of deptsIn(rows)){const rs=rows.filter(r=>(r.pb||"")===dname);const A=agg(rs);
     body.push(h("tr",{class:"grp"},h("td",{class:"l",colspan:String(2+dvCols.length)},h("strong",{},dname||"(chưa có phòng ban)"),h("span",{class:"muted small"},`  ${rs.length} người`)),
@@ -617,16 +619,46 @@ function viewTongHop(){
         oninput:e=>{S.search=e.target.value;clearTimeout(S._st);S._st=setTimeout(render,250);}}),
         S.dv.length?h("label",{class:"toggle"},h("input",{type:"checkbox",role:"switch",checked:showDv,onchange:e=>{S.showDv=e.target.checked;render();}}),"Chi tiết dịch vụ"):null)),
     h("div",{class:"scroll"},h("table",{class:"grid kt-report"},h("thead",{},head),h("tbody",{},body.length?body:[h("tr",{},h("td",{class:"l",colspan:String(ncol)},"Không có nhân viên nào khớp."))]))),
-    h("p",{class:"hint",style:"margin-top:10px"},"Công thực tế = Công chuẩn − Ngày nghỉ. TB/ngày = KPI tháng ÷ Công thực tế. Đạt khi TB/ngày ≥ KPI chuẩn của phòng ban. So T.trước = KPI tháng này ÷ KPI tháng trước × 100%.")));
+    h("p",{class:"hint",style:"margin-top:10px"},"Công thực tế = Công chuẩn − Ngày nghỉ. TB/ngày = KPI tháng ÷ Công thực tế. Đạt khi TB/ngày ≥ Mục tiêu của người đó. So T.trước = KPI tháng này ÷ KPI tháng trước × 100%.")));
   const s=document.querySelector("input[type=search]");
   S.after.push(()=>{const i=document.querySelector(".panel input[type=search]");if(i&&S.search&&document.activeElement!==i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}});
   return out;}
+function donut(rate){const r=46,c=2*Math.PI*r,v=rate==null?0:Math.max(0,Math.min(1,rate));
+  const s=document.createElementNS("http://www.w3.org/2000/svg","svg");s.setAttribute("viewBox","0 0 120 120");s.setAttribute("class","donut");s.setAttribute("aria-hidden","true");
+  s.innerHTML=`<circle cx="60" cy="60" r="${r}" class="d-bg"/><circle cx="60" cy="60" r="${r}" class="d-fg" stroke-dasharray="${(c*v).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/>`;
+  return h("div",{class:"donut-wrap"},s,h("div",{class:"donut-txt"},h("strong",{},rate==null?"—":fmt(rate*100,0)+"%"),h("span",{},"đạt mục tiêu")));}
+function heroCard(k,pb,T,TP){
+  const ch=T.avg!=null&&TP.avg?T.avg/TP.avg*100-100:null;
+  const trend=ch==null?"":Math.abs(ch)<0.5?", giữ nguyên so với tháng trước":ch>0?`, tăng ${fmt(ch,1)}% so với tháng trước`:`, giảm ${fmt(-ch,1)}% so với tháng trước`;
+  return h("div",{class:"hero-k"},h("div",{class:"hk-text"},
+      h("div",{class:"hk-eyebrow"},pb||"Toàn bộ phòng ban"),h("div",{class:"hk-title"},monthLabel(k)),
+      h("p",{class:"hk-sum"},h("strong",{},`${T.pass}/${T.judged} người`)," đạt mục tiêu. Trung bình ",h("strong",{},`${fmt(T.avg)} case/ngày`),trend+"."),
+      h("div",{class:"hk-facts"},h("span",{},"📦 ",h("strong",{},fmt(T.total,0))," case"),h("span",{},"👥 ",h("strong",{},String(T.rows))," nhân viên"),h("span",{},"🕒 ",h("strong",{},fmt(T.truc,1))," giờ trực"))),
+    donut(T.rate));}
+function topNeedPanels(rows){
+  const sc=rows.map(r=>{const c=calc(r);return {r,c,ratio:c.avg!=null&&c.chuan?c.avg/c.chuan:null,p:prevPct(r)};}).filter(x=>x.ratio!=null);
+  if(!sc.length)return h("div");
+  const top=[...sc].sort((a,b)=>b.ratio-a.ratio).slice(0,5);
+  const need=sc.filter(x=>x.c.pass===false).sort((a,b)=>a.ratio-b.ratio).slice(0,5);
+  const medal=["🥇","🥈","🥉"];
+  const item=(x,i,kind)=>h("button",{type:"button",class:"tn-item",title:"Xem phòng "+(x.r.pb||""),onclick:()=>{S.pbDept=x.r.pb;go("phongban");}},
+    h("span",{class:"tn-rank"+(kind==="top"&&i<3?" medal":"")},kind==="top"&&i<3?medal[i]:String(i+1)),
+    avatar(x.r.ten||x.r.ma),
+    h("span",{class:"tn-who"},h("span",{class:"tn-name"},x.r.ten||x.r.ma,cvTag(x.r.ma)),h("span",{class:"tn-sub"},(x.r.pb?x.r.pb+", ":"")+`TB ${fmt(x.c.avg)} / mục tiêu ${fmt(x.c.chuan)}`)),
+    h("span",{class:"tn-val"},h("strong",{class:kind==="top"?"ok":"bad"},fmt(x.ratio*100,0)+"%"),
+      h("span",{class:"tn-bar"},h("span",{class:kind,style:`width:${Math.min(100,x.ratio/1.5*100)}%`})),
+      h("span",{class:"tn-prev"},x.p==null?"":(x.p>=100?"▲ ":"▼ ")+fmt(x.p,0)+"% T.trước")));
+  return h("div",{class:"two-col tops"},
+    h("div",{class:"panel tn top"},h("div",{class:"panel-head"},h("h3",{},"🏆 Xuất sắc tháng"),h("span",{class:"small muted"},"% so với mục tiêu")),
+      h("div",{class:"tn-list"},top.map((x,i)=>item(x,i,"top")))),
+    h("div",{class:"panel tn need"},h("div",{class:"panel-head"},h("h3",{},"🤝 Cần hỗ trợ"),h("span",{class:"small muted"},need.length?"Chưa đạt, thấp nhất trước":"")),
+      need.length?h("div",{class:"tn-list"},need.map((x,i)=>item(x,i,"need"))):h("div",{class:"tn-empty"},h("div",{class:"big-emoji"},"🎉"),h("p",{},"Cả nhóm đều đạt mục tiêu tháng này!"))));}
 function tile(lab,val,sub,cmpEl,meter){return h("div",{class:"tile"},h("div",{class:"lab"},lab),h("div",{class:"val"},val),
   meter!=null?h("div",{class:"meter"},h("span",{style:`width:${Math.max(0,Math.min(100,meter))}%`})):null,h("div",{class:"sub"},sub),cmpEl||null);}
 function exportTongHop(k,pb){
   if(!window.XLSX){toast("Không tải được thư viện Excel.");return;}
   const rows=monthRows(k,pb);const aoa=[["BÁO CÁO TỔNG HỢP KPI "+monthLabel(k).toUpperCase()+(pb?" – "+pb:"")],[],
-    ["Phòng ban","Mã NV","Nhân viên","Chức vụ",...S.dv.map(d=>d.ten),"KPI tháng","Ngày nghỉ","Công chuẩn","Công thực tế","TB case/ngày","KPI chuẩn","Kết quả","So tháng trước (%)","Giờ trực"]];
+    ["Phòng ban","Mã NV","Nhân viên","Chức vụ",...S.dv.map(d=>d.ten),"KPI tháng","Ngày nghỉ","Công chuẩn","Công thực tế","TB case/ngày","Mục tiêu (case/ngày)","Kết quả","So tháng trước (%)","Giờ trực"]];
   for(const dname of deptsIn(rows)){const rs=rows.filter(r=>(r.pb||"")===dname);
     rs.forEach(r=>{const c=calc(r);const p=prevPct(r);
       aoa.push([dname,r.ma,r.ten,cvOf(r.ma),...S.dv.map(d=>num((r.sl||{})[d.ma])),c.total,c.nghi,c.cong,c.tt,c.avg==null?null:Math.round(c.avg*100)/100,c.chuan,
@@ -718,10 +750,14 @@ function viewDichVu(){
 /* =====================================================================
    NHẬP KPI THÁNG
    ===================================================================== */
+function defTarget(thang,ma,ex,p){
+  if(ex&&validNum(ex.chuan))return +ex.chuan;
+  const pv=S.kpi.get(shiftMonth(thang,-1)+"|"+ma);if(pv&&validNum(pv.chuan))return +pv.chuan;
+  return p&&validNum(p.chuan)?+p.chuan:null;}
 function openEnt(thang){
   const map=new Map();
   for(const n of S.nv){const ex=S.kpi.get(thang+"|"+n.ma);const p=pbById(n.pb);
-    map.set(n.ma,{ma:n.ma,ten:n.ten,pb:p?p.ten:(ex?ex.pb:""),chuan:ex&&ex.chuan!=null?ex.chuan:(p&&p.chuan!=null&&p.chuan!==""?+p.chuan:null),
+    map.set(n.ma,{ma:n.ma,ten:n.ten,pb:p?p.ten:(ex?ex.pb:""),chuan:defTarget(thang,n.ma,ex,p),
       sl:{...(ex?ex.sl:{})},nghi:ex?ex.nghi:null,truc:ex?ex.truc:null,exists:!!ex,baseAt:ex?ex.at||null:null,_chg:new Set()});}
   for(const r of S.kpi.values())if(r.thang===thang&&!map.has(r.ma))map.set(r.ma,{ma:r.ma,ten:r.ten,pb:r.pb,chuan:r.chuan,sl:{...r.sl},nghi:r.nghi,truc:r.truc,exists:true,old:true,baseAt:r.at||null,_chg:new Set()});
   let rows=[...map.values()];const ord=pbOrder();
@@ -731,13 +767,13 @@ function openEnt(thang){
   let nd=0;
   if(draft&&draft.rows)rows.forEach(r=>{const d=draft.rows[r.ma];if(!d||!Array.isArray(d.chg))return;
     for(const k of d.chg){if(k.startsWith("sl:")){const dm=k.slice(3);const v=d.sl?d.sl[dm]:null;if(v==null||v==="")delete r.sl[dm];else r.sl[dm]=v;}
-      else if(k==="nghi")r.nghi=d.nghi;else if(k==="truc")r.truc=d.truc;r._chg.add(k);}nd++;});
+      else if(k==="nghi")r.nghi=d.nghi;else if(k==="truc")r.truc=d.truc;else if(k==="chuan")r.chuan=d.chuan;r._chg.add(k);}nd++;});
   S.ent={thang,rows,dirty:nd>0,draft:nd>0,saving:false,confirmDel:false};}
 function entFilled(r){return Object.values(r.sl||{}).some(v=>v!=null&&v!=="")||(r.nghi!=null&&r.nghi!=="")||(r.truc!=null&&r.truc!=="");}
 let entTimer=null;
 function entTouch(){const E=S.ent;E.dirty=true;clearTimeout(entTimer);
   entTimer=setTimeout(()=>{const d={};E.rows.forEach(r=>{if(r._chg&&r._chg.size){const sl={};for(const k of r._chg)if(k.startsWith("sl:"))sl[k.slice(3)]=r.sl[k.slice(3)]??null;
-      d[r.ma]={chg:[...r._chg],sl,nghi:r.nghi,truc:r.truc};}});
+      d[r.ma]={chg:[...r._chg],sl,nghi:r.nghi,truc:r.truc,chuan:r.chuan};}});
     if(Object.keys(d).length)lsSet("kpi:draft3:"+E.thang,JSON.stringify({at:new Date().toISOString(),rows:d}));else lsDel("kpi:draft3:"+E.thang);},400);entSummary();}
 function entSummary(){const E=S.ent,el=document.getElementById("ent-sum");if(!E||!el)return;
   const filled=E.rows.filter(entFilled);const cs=filled.map(r=>calc({...r,thang:E.thang,cong:null}));
@@ -772,7 +808,7 @@ function viewEnt(){
   out.append(h("div",{class:"etools"},h("input",{type:"search",placeholder:"Lọc mã hoặc tên…","aria-label":"Lọc nhân viên",value:S.entQ||"",oninput:e=>{S.entQ=e.target.value;filterEnt();}}),
     deptSelect(pbF,v=>{S.entPb=v;filterEnt();}),E.draft&&!ro?h("button",{class:"ghost",type:"button",onclick:()=>{lsDel("kpi:draft3:"+E.thang);S.ent=null;render();}},"Bỏ bản nháp"):null,
     h("span",{class:"spacer"}),h("span",{class:"small faint"},"Nhấn Enter để sang ô kế tiếp. Bản nháp tự giữ trên máy này.")));
-  const head=h("tr",{},h("th",{class:"l"},"Mã"),h("th",{class:"l"},"Nhân viên"),dv.map(d=>h("th",{title:d.ten},d.ten)),h("th",{},"KPI tháng"),h("th",{},"Ngày nghỉ"),h("th",{},"Công TT"),h("th",{},"TB/ngày"),h("th",{},"Chuẩn"),h("th",{class:"c"},"Kết quả"),h("th",{},"So T.trước"),h("th",{},"Giờ trực"));
+  const head=h("tr",{},h("th",{class:"l"},"Mã"),h("th",{class:"l"},"Nhân viên"),dv.map(d=>h("th",{title:d.ten},d.ten)),h("th",{},"KPI tháng"),h("th",{},"Ngày nghỉ"),h("th",{},"Công TT"),h("th",{},"TB/ngày"),h("th",{title:"KPI mục tiêu của từng người (case/ngày)"},"Mục tiêu"),h("th",{class:"c"},"Kết quả"),h("th",{},"So T.trước"),h("th",{},"Giờ trực"));
   const body=h("tbody",{});let lastPb=null;
   const inp=(get,set,lab,r,upd,key)=>h("input",{type:"number",step:"any",min:"0",inputmode:"decimal",class:"cell-in","data-nav":"",disabled:ro,"aria-label":lab+" của "+r.ten,value:get()==null?"":String(get()),
     oninput:e=>{const v=e.target.value.trim();set(v===""?null:Number(v));r._chg.add(key);upd();entTouch();}});
@@ -785,12 +821,12 @@ function viewEnt(){
     upd();
     body.append(h("tr",{"data-ma":fold(r.ma),"data-ten":fold(r.ten),"data-pb":r.pb||""},h("td",{class:"l mono"},r.ma),h("td",{class:"l"},h("div",{class:"who-cv"},who(r.ten),cvTag(r.ma),r.old?h("span",{class:"tag"},"không còn trong danh sách"):null)),
       dv.map(d=>h("td",{},inp(()=>r.sl[d.ma],v=>{if(v==null)delete r.sl[d.ma];else r.sl[d.ma]=v;},d.ten,r,upd,"sl:"+d.ma))),
-      cTot,h("td",{},inp(()=>r.nghi,v=>{r.nghi=v;},"Ngày nghỉ",r,upd,"nghi")),cTT,cAvg,h("td",{},fmt(r.chuan)),cKq,cPct,h("td",{},inp(()=>r.truc,v=>{r.truc=v;},"Giờ trực",r,upd,"truc"))));});
+      cTot,h("td",{},inp(()=>r.nghi,v=>{r.nghi=v;},"Ngày nghỉ",r,upd,"nghi")),cTT,cAvg,h("td",{},isAdmin()&&!ro?inp(()=>r.chuan,v=>{r.chuan=v;},"Mục tiêu",r,upd,"chuan"):fmt(r.chuan)),cKq,cPct,h("td",{},inp(()=>r.truc,v=>{r.truc=v;},"Giờ trực",r,upd,"truc"))));});
   const table=h("table",{class:"grid kt-entry"},h("thead",{},head),body);
   table.addEventListener("keydown",e=>{if(e.key!=="Enter"||!e.target.matches("[data-nav]"))return;e.preventDefault();
     const all=[...table.querySelectorAll("tr:not([hidden]) input[data-nav]:not(:disabled)")];const i=all.indexOf(e.target);if(all[i+1]){all[i+1].focus();all[i+1].select();}});
   out.append(h("div",{class:"panel"},h("div",{class:"scroll"},table),
-    h("p",{class:"hint",style:"margin-top:10px"},"Chỉ cần nhập số lượng từng dịch vụ, ngày nghỉ và giờ trực. KPI tháng, công thực tế, TB/ngày và kết quả tự tính. KPI chuẩn lấy theo phòng ban.")));
+    h("p",{class:"hint",style:"margin-top:10px"},"Chỉ cần nhập số lượng từng dịch vụ, ngày nghỉ và giờ trực. KPI tháng, công thực tế, TB/ngày và kết quả tự tính. Mục tiêu (case/ngày) tự điền theo tháng trước của người đó, chưa có thì theo KPI chuẩn phòng ban; Quản lý sửa được từng người.")));
   if(!ro)out.append(h("div",{class:"savebar"},h("div",{class:"progress",id:"ent-sum"}),
     isAdmin()&&E.rows.some(r=>r.exists)?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!E.confirmDel){E.confirmDel=true;render();return;}
       try{S.busy=true;await sbRpc("kpi_delete_kpi",{p_thang:E.thang,p_ma_nv:null});for(const k of [...S.kpi.keys()])if(k.startsWith(E.thang+"|"))S.kpi.delete(k);
@@ -822,8 +858,9 @@ async function saveEnt(){
         nghi:base?+base.nghi||0:0,truc:base?+base.truc||0:0,
         cong:cs!=null?cs:base&&validNum(base.cong)?+base.cong:congDefault(),chuan:base&&base.chuan!=null?base.chuan:r.chuan};
       for(const k of r._chg){if(k.startsWith("sl:")){const dm=k.slice(3);const v=r.sl[dm];if(v==null||v==="")delete m.sl[dm];else m.sl[dm]=+v;}
-        else if(k==="nghi")m.nghi=+r.nghi||0;else if(k==="truc")m.truc=+r.truc||0;}
-      const empty=!Object.keys(m.sl).length&&!m.nghi&&!m.truc;
+        else if(k==="nghi")m.nghi=+r.nghi||0;else if(k==="truc")m.truc=+r.truc||0;else if(k==="chuan")m.chuan=validNum(r.chuan)?+r.chuan:null;}
+      const onlyTarget=[...r._chg].every(k=>k==="chuan");
+      const empty=!Object.keys(m.sl).length&&!m.nghi&&!m.truc&&!(onlyTarget&&base);
       if(empty){if(base)dels.push([E.thang,r.ma]);}else rows.push(m);}
     await saveKpiRows(rows,dels);clearTimeout(entTimer);lsDel("kpi:draft3:"+E.thang);S.ent=null;
     toast(`Đã lưu ${rows.length+dels.length} nhân viên cho ${monthLabel(E.thang).toLowerCase()}.`+(merged?` Có ${merged} người vừa được người khác cập nhật, web đã giữ số của họ và chỉ thay các ô bạn sửa.`:""));render();}
@@ -831,15 +868,15 @@ async function saveEnt(){
 
 /* ----- nhập từ file / dán ----- */
 const HDR2={ma:/^(ma( so)?( nv| nhan vien)?|msnv|ma so nhan vien|id)$/,ten:/^(ho( va)? ten|ten|ten nhan vien|nhan vien|ten nv|ho ten nv)$/,
-  thang:/^(thang|ky|thang\/nam|thang nam|thoi gian|month)$/,nghi:/^(ngay nghi|so ngay nghi|nghi)$/,truc:/^(gio truc|thoi gian truc|truc|so gio truc)$/};
+  thang:/^(thang|ky|thang\/nam|thang nam|thoi gian|month)$/,nghi:/^(ngay nghi|so ngay nghi|nghi)$/,truc:/^(gio truc|thoi gian truc|truc|so gio truc)$/,chuan:/^(muc tieu|kpi muc tieu|muc tieu \(case\/ngay\)|chuan|kpi chuan|target)$/};
 function findHeader2(grid){for(let r=0;r<Math.min(grid.length,15);r++){const row=grid[r]||[];
   if(row.some(v=>{const f=fold(cellStr(v));return HDR2.ma.test(f)||HDR2.ten.test(f);})&&row.filter(v=>cellStr(v)).length>=2)return {row:r,headers:row.map(v=>cellStr(v))};}return null;}
 function guessMap2(H){const used=new Set(),m={};const take=(k,t)=>{const i=H.findIndex((x,c)=>!used.has(c)&&x&&t(fold(x)));if(i>=0){m[k]=H[i];used.add(i);}};
-  take("ma",f=>HDR2.ma.test(f));take("ten",f=>HDR2.ten.test(f));take("thang",f=>HDR2.thang.test(f));take("nghi",f=>HDR2.nghi.test(f));take("truc",f=>HDR2.truc.test(f));
+  take("ma",f=>HDR2.ma.test(f));take("ten",f=>HDR2.ten.test(f));take("thang",f=>HDR2.thang.test(f));take("nghi",f=>HDR2.nghi.test(f));take("truc",f=>HDR2.truc.test(f));take("chuan",f=>HDR2.chuan.test(f));
   S.dv.forEach(d=>take("dv:"+d.ma,f=>f===fold(d.ma)||f===fold(d.ten)));S.dv.forEach(d=>{if(!m["dv:"+d.ma])take("dv:"+d.ma,f=>f.length>=3&&(f.includes(fold(d.ten))||fold(d.ten).includes(f)));});return m;}
 function impRows(I){const res=[],unknown=new Set();let noMonth=0;
   for(const sh of I.sheets){const H=sh.hdr.headers;const idx=k=>{const t=I.map[k];return t?H.findIndex(x=>fold(x)===fold(t)):-1;};
-    const ci={ma:idx("ma"),ten:idx("ten"),thang:idx("thang"),nghi:idx("nghi"),truc:idx("truc")};const dvi=S.dv.map(d=>({ma:d.ma,i:idx("dv:"+d.ma)}));
+    const ci={ma:idx("ma"),ten:idx("ten"),thang:idx("thang"),nghi:idx("nghi"),truc:idx("truc"),chuan:idx("chuan")};const dvi=S.dv.map(d=>({ma:d.ma,i:idx("dv:"+d.ma)}));
     if(ci.ma<0&&ci.ten<0)continue;
     for(let r=sh.hdr.row+1;r<sh.grid.length;r++){const row=sh.grid[r]||[];const ma=ci.ma>=0?cellStr(row[ci.ma]):"",ten=ci.ten>=0?cellStr(row[ci.ten]):"";
       if(!ma&&!ten)continue;if(/^(tong|cong|total)/.test(fold(ma||ten)))continue;
@@ -848,7 +885,7 @@ function impRows(I){const res=[],unknown=new Set();let noMonth=0;
       const ex=S.kpi.get(th+"|"+nv.ma);const p=pbById(nv.pb);
       const sl={...(ex?ex.sl:{})};dvi.forEach(({ma:dm,i})=>{if(i<0)return;const v=num(row[i]);if(v==null)delete sl[dm];else sl[dm]=v;});
       res.push({thang:th,ma:nv.ma,ten:nv.ten,pb:p?p.ten:(ex?ex.pb:""),sl,nghi:ci.nghi>=0?(num(row[ci.nghi])||0):(ex?+ex.nghi||0:0),truc:ci.truc>=0?(num(row[ci.truc])||0):(ex?+ex.truc||0:0),
-        cong:congChuan(th),chuan:ex&&ex.chuan!=null?ex.chuan:(p&&p.chuan!=null&&p.chuan!==""?+p.chuan:null),exists:!!ex});}}
+        cong:congChuan(th),chuan:(ci.chuan>=0&&num(row[ci.chuan])!=null)?num(row[ci.chuan]):defTarget(th,nv.ma,ex,p),exists:!!ex});}}
   const uniq=new Map();res.forEach(r=>uniq.set(r.thang+"|"+r.ma,r));return {rows:[...uniq.values()],unknown:[...unknown],noMonth,dup:res.length-uniq.size};}
 function startImp(sheets,source){if(!sheets.length){toast("Không thấy dòng tiêu đề có cột Mã NV hoặc Tên nhân viên.");return;}
   const H=[];sheets.forEach(s=>s.hdr.headers.forEach(x=>{if(x&&!H.includes(x))H.push(x);}));
@@ -873,7 +910,7 @@ function viewImport(){
 function viewImpPreview(){
   const I=S.imp;const out=h("div",{class:"stack-s"});
   const fields=[["ma","Mã NV","Khớp với Danh mục nhân viên"],["ten","Tên nhân viên","Dùng khi không có Mã NV"],["thang","Tháng","Ví dụ 11/2026"],
-    ...S.dv.map(d=>["dv:"+d.ma,d.ten,"Số lượng dịch vụ "+d.ma]),["nghi","Ngày nghỉ","Số ngày nghỉ trong tháng"],["truc","Giờ trực","Đơn vị: tiếng"]];
+    ...S.dv.map(d=>["dv:"+d.ma,d.ten,"Số lượng dịch vụ "+d.ma]),["nghi","Ngày nghỉ","Số ngày nghỉ trong tháng"],["truc","Giờ trực","Đơn vị: tiếng"],["chuan","Mục tiêu","case/ngày; bỏ trống thì giữ như cũ"]];
   const grid=h("div",{class:"panel mapgrid"});
   fields.forEach(([k,l,hint])=>{const sel=h("select",{"aria-label":"Cột cho "+l,onchange:e=>{I.map[k]=e.target.value||undefined;render();}},h("option",{value:""},"(bỏ qua)"),I.headers.map(x=>h("option",{value:x},x)));
     sel.value=I.map[k]||"";grid.append(h("div",{class:"maprow"+(I.map[k]?" on":"")},h("div",{class:"map-l"},h("strong",{},l),h("span",{class:"small faint"},hint)),h("span",{class:"map-arrow"},"←"),sel));});
@@ -898,9 +935,9 @@ function viewImpPreview(){
       catch(e){I.saving=false;toast(errMsg(e));render();}}},I.saving?"Đang lưu…":`Lưu ${R.rows.length} dòng`)));
   return out;}
 function downloadTemplate2(){if(!window.XLSX){toast("Không tải được thư viện Excel.");return;}
-  const head=["Tháng","Mã NV","Tên nhân viên","Phòng ban",...S.dv.map(d=>d.ten),"Ngày nghỉ","Giờ trực"];
+  const head=["Tháng","Mã NV","Tên nhân viên","Phòng ban",...S.dv.map(d=>d.ten),"Ngày nghỉ","Giờ trực","Mục tiêu"];
   const m=S.month.split("-");const label=`${m[1]}/${m[0]}`;
-  const rows=(S.nv.length?S.nv:[{ma:"NV001",ten:"Nguyễn Văn A",pb:null}]).map(n=>[label,n.ma,n.ten,pbName(n.pb),...S.dv.map(()=>null),null,null]);
+  const rows=(S.nv.length?S.nv:[{ma:"NV001",ten:"Nguyễn Văn A",pb:null}]).map(n=>[label,n.ma,n.ten,pbName(n.pb),...S.dv.map(()=>null),null,null,defTarget(S.month,n.ma,S.kpi.get(S.month+"|"+n.ma),pbById(n.pb))]);
   const ws=XLSX.utils.aoa_to_sheet([head,...rows]);ws["!cols"]=[{wch:9},{wch:10},{wch:26},{wch:18},...S.dv.map(()=>({wch:13})),{wch:10},{wch:9}];
   const g=XLSX.utils.aoa_to_sheet([["Cách điền"],["1. Mỗi dòng là 1 nhân viên trong 1 tháng. Cột Tháng ghi dạng 11/2026."],["2. Mã NV phải trùng với Danh mục nhân viên trên web."],
     ["3. Các cột dịch vụ ghi số lượng case đạt được trong tháng. Bỏ trống nếu không có."],["4. Ngày nghỉ: số ngày nghỉ trong tháng. Giờ trực: tổng số tiếng trực."],
@@ -1029,7 +1066,7 @@ function viewDanhMuc(){
       const showPlan=()=>{const n=plan(fromSel.value).length;preview.textContent=n?`Sẽ đổi KPI chuẩn cho ${n} dòng số liệu từ ${monthLabel(fromSel.value).toLowerCase()} trở đi.`:"Các tháng này đã dùng đúng KPI chuẩn hiện tại, không cần đổi.";};
       fromSel.addEventListener("change",showPlan);S.after.push(showPlan);
       out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Áp dụng KPI chuẩn mới cho số liệu đã lưu")),
-        h("p",{class:"hint"},"Số liệu đã lưu giữ KPI chuẩn tại lúc nhập. Muốn các tháng đã nhập tính theo KPI chuẩn đang đặt ở bảng trên, chọn tháng bắt đầu rồi bấm Áp dụng. Chỉ đổi cột KPI chuẩn, không đổi số lượng. Mọi thay đổi đều được ghi vào nhật ký."),
+        h("p",{class:"hint"},"Số liệu đã lưu giữ mục tiêu tại lúc nhập. Muốn các tháng đã nhập tính theo KPI chuẩn phòng ban đang đặt ở bảng trên, chọn tháng bắt đầu rồi bấm Áp dụng. Lưu ý: thao tác này GHI ĐÈ cả mục tiêu riêng đã sửa cho từng người trong các tháng được chọn. Không đổi số lượng. Mọi thay đổi đều được ghi vào nhật ký."),
         h("div",{class:"row",style:"margin-top:10px"},h("label",{class:"field"},"Áp dụng từ tháng",fromSel),
           h("button",{class:"btn",type:"button",style:"align-self:flex-end",onclick:async e=>{
             if(dmDirty()){toast("Bảng phòng ban còn thay đổi chưa lưu. Bấm Lưu trước rồi mới Áp dụng.");return;}
@@ -1134,10 +1171,38 @@ function statusBanner(){
 function emptyState(){return h("div",{class:"panel empty"},h("div",{class:"logo","aria-hidden":"true"}),h("h2",{},"Chưa có số liệu KPI"),
   h("p",{class:"muted"},"Nhập KPI tháng bằng tay, hoặc tải file Excel theo mẫu."),h("button",{class:"btn",type:"button",onclick:()=>go("nhap")},"Nhập KPI tháng"));}
 
+/* ---------- bông tuyết ---------- */
+const SNOW={on:false,cv:null,ctx:null,fl:[],raf:0,w:0,h:0};
+const SNOW_COL=["95,214,160","56,182,216","126,179,255","170,230,255"];
+function snowPref(){const v=lsGet("kpi:snow");if(v==="on")return true;if(v==="off")return false;return !matchMedia("(prefers-reduced-motion: reduce)").matches;}
+function newFlake(anyY){return {x:Math.random()*SNOW.w,y:anyY?Math.random()*SNOW.h:-14,r:1.1+Math.random()*2.6,star:Math.random()<.25,sz:4.5+Math.random()*6.5,
+  vy:.25+Math.random()*.75,ph:Math.random()*6.28,amp:.3+Math.random()*.8,rot:Math.random()*6.28,vr:(Math.random()-.5)*.012,a:.35+Math.random()*.45,
+  c:SNOW_COL[Math.floor(Math.random()*SNOW_COL.length)]};}
+function snowSize(){const c=SNOW.cv;if(!c)return;const dpr=Math.min(window.devicePixelRatio||1,1.5);SNOW.w=innerWidth;SNOW.h=innerHeight;
+  c.width=Math.round(SNOW.w*dpr);c.height=Math.round(SNOW.h*dpr);SNOW.ctx.setTransform(dpr,0,0,dpr,0,0);
+  const want=Math.round(Math.min(75,Math.max(22,SNOW.w*SNOW.h/20000)));while(SNOW.fl.length<want)SNOW.fl.push(newFlake(true));SNOW.fl.length=want;}
+function drawFlake(g,f){g.fillStyle=g.strokeStyle=`rgba(${f.c},${f.a})`;
+  if(!f.star){g.beginPath();g.arc(f.x,f.y,f.r,0,6.2832);g.fill();return;}
+  g.save();g.translate(f.x,f.y);g.rotate(f.rot);g.lineWidth=1.25;g.lineCap="round";g.beginPath();
+  for(let i=0;i<6;i++){const a=i*Math.PI/3,L=f.sz,cx=Math.cos(a),sy=Math.sin(a),bx=cx*L*.58,by=sy*L*.58,b=L*.3;
+    g.moveTo(0,0);g.lineTo(cx*L,sy*L);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a+.65)*b,by+Math.sin(a+.65)*b);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a-.65)*b,by+Math.sin(a-.65)*b);}
+  g.stroke();g.restore();}
+function snowTick(){const g=SNOW.ctx;g.clearRect(0,0,SNOW.w,SNOW.h);
+  for(const f of SNOW.fl){f.y+=f.vy;f.ph+=.012;f.x+=Math.sin(f.ph)*f.amp*.35;f.rot+=f.vr;
+    if(f.y>SNOW.h+14||f.x<-24||f.x>SNOW.w+24)Object.assign(f,newFlake(false));drawFlake(g,f);}
+  SNOW.raf=requestAnimationFrame(snowTick);}
+function setSnow(on,save){SNOW.on=on;if(save)lsSet("kpi:snow",on?"on":"off");
+  if(on&&!SNOW.cv){const c=document.createElement("canvas");c.className="snow";c.setAttribute("aria-hidden","true");document.body.prepend(c);
+    SNOW.cv=c;SNOW.ctx=c.getContext("2d");snowSize();window.addEventListener("resize",snowSize);}
+  if(SNOW.cv)SNOW.cv.style.display=on?"block":"none";cancelAnimationFrame(SNOW.raf);if(on)SNOW.raf=requestAnimationFrame(snowTick);
+  document.querySelectorAll(".snow-tg").forEach(b=>{b.setAttribute("aria-pressed",String(on));b.title=on?"Tắt tuyết rơi":"Bật tuyết rơi";});}
+
 /* ---------- start ---------- */
 async function init(){
   const v=(location.hash||"").slice(1);if(VIEWS.some(x=>x[0]===v))S.view=v;
   document.getElementById("cta").addEventListener("click",()=>{S.month=thisMonth();S.ent=null;S.nhapMode="tay";go("nhap");});
+  document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>{setSnow(!SNOW.on,true);toast(SNOW.on?"Đã bật tuyết rơi ❄":"Đã tắt tuyết rơi");}));
+  setSnow(snowPref(),false);
   render();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{if(S.view!=="nhap"&&S.view!=="danhmuc")render();});
   S.lsOK=storageOK();
