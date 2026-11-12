@@ -126,7 +126,7 @@ function authMsg(e){const m=String((e&&e.message)||"");
   if(/password/i.test(m)&&/(at least|characters|weak|short)/i.test(m))return "Mật khẩu quá yếu. Dùng ít nhất 8 ký tự, có cả chữ và số.";
   if(/same.*password|different from the old/i.test(m))return "Mật khẩu mới phải khác mật khẩu cũ.";
   if((e&&e.status===429)||/rate limit|too many/i.test(m))return "Thao tác quá nhiều lần. Đợi vài phút rồi thử lại.";
-  if(/signups? not allowed|signup.*disabled/i.test(m))return "Web đang tắt đăng ký tài khoản mới. Nhờ quản lý tạo tài khoản giúp.";
+  if(/signups? not allowed|signup.*disabled/i.test(m))return "Web đang tắt đăng ký tài khoản mới. Nhờ Admin tạo tài khoản giúp.";
   if(/invalid.*email|unable to validate email/i.test(m))return "Email không hợp lệ.";
   if(e&&e.code==="session_expired")return "Phiên đăng nhập đã hết hạn. Đăng nhập lại nhé.";
   return "Có lỗi: "+(m||"không rõ")+".";}
@@ -268,6 +268,11 @@ function errMsg(e){
   if(/chi_quan_ly_danh_gia/.test(raw))return "Chỉ Quản lý phòng hoặc Admin mới đánh giá được.";
   if(/chi_nguoi_duoc_giao_tu_danh_gia/.test(raw))return "Chỉ người được giao việc mới tự đánh giá được.";
   if(/last_admin/.test(raw))return "Phải còn ít nhất 1 Admin, không hạ quyền Admin cuối cùng được.";
+  if(/khong_co_quyen_pb/.test(raw))return "Bạn chỉ thao tác được dữ liệu và công việc của phòng ban mình phụ trách.";
+  if(/chi_admin_cap_nhat_tien_do/.test(raw))return "Chỉ Admin mới cập nhật tiến độ và kết quả công việc.";
+  {const mm=raw.match(/ma_nv_trung:(\S+)/);if(mm)return `Mã NV ${mm[1]} đã tồn tại trong Danh mục.`;}
+  if(/chua_chon_phong/.test(raw))return "Bạn chưa chọn phòng phụ trách. Vào mục Tài khoản để chọn.";
+  if(/thieu_thang_hoac_ma_nv|cv_generate.*p_pb|cv_set_plan.*p_pb|kpi_delete_kpi_pb|kpi_add_nv/.test(raw)&&/function|thieu_thang/.test(raw))return "Cơ sở dữ liệu chưa nâng cấp công việc theo phòng ban. Admin chạy file cong_viec_phong_ban.sql trong Supabase.";
   if(/chi_quan_ly_tu_chon/.test(raw))return "Chỉ tài khoản Quản lý mới tự chọn phòng phụ trách được.";
   if(/phong_ban_khong_ton_tai/.test(raw))return "Phòng ban này không còn trong Danh mục.";
   if(/ma_nv_da_gan/.test(raw))return "Mã NV này đã được gắn cho tài khoản khác. Nhờ Admin kiểm tra.";
@@ -382,9 +387,9 @@ function viewGate(){
   }else{ // pending / khóa
     const r=S.me&&S.me.vai_tro;
     add(h("div",{class:"big-emoji","aria-hidden":"true"},r==="khoa"?"🔒":"⏳"),
-      h("h2",{},r==="khoa"?"Tài khoản đã bị khóa":"Đang chờ quản lý duyệt"),
-      h("p",{class:"muted"},r==="khoa"?"Tài khoản này không còn quyền xem báo cáo. Liên hệ quản lý nếu cần mở lại.":
-        "Tài khoản của bạn đã được tạo. Nhờ quản lý vào mục Tài khoản để duyệt, rồi bấm Kiểm tra lại."),
+      h("h2",{},r==="khoa"?"Tài khoản đã bị khóa":"Đang chờ Admin duyệt"),
+      h("p",{class:"muted"},r==="khoa"?"Tài khoản này không còn quyền xem báo cáo. Liên hệ Admin nếu cần mở lại.":
+        "Tài khoản của bạn đã được tạo. Nhờ Admin vào mục Tài khoản để duyệt, rồi bấm Kiểm tra lại."),
       S.me?h("p",{class:"small muted",style:"margin-top:8px"},"Đang đăng nhập: "+S.me.email):null,msgEl(),
       h("div",{class:"row",style:"margin-top:16px"},h("button",{class:"btn",type:"button",style:"flex:1",onclick:enterApp},"Kiểm tra lại"),
         h("button",{class:"ghost",type:"button",onclick:logout},"Đăng xuất")));
@@ -902,6 +907,11 @@ function viewEnt(){
   out.append(h("div",{class:"panel"},h("div",{class:"scroll"},table),
     h("p",{class:"hint",style:"margin-top:10px"},"Chỉ cần nhập số lượng từng dịch vụ, ngày nghỉ và giờ trực. KPI tháng, công thực tế, TB/ngày và kết quả tự tính. Mục tiêu (case/ngày) tự điền theo tháng trước của người đó, chưa có thì theo KPI chuẩn phòng ban; Quản lý sửa được từng người.")));
   if(!ro)out.append(h("div",{class:"savebar"},h("div",{class:"progress",id:"ent-sum"}),
+    !isAdmin()&&isMgr()&&myPbId()&&E.rows.some(r=>r.exists&&nvPbId(r.ma)===myPbId())?h("button",{class:"ghost danger",type:"button",onclick:async()=>{
+      if(!confirm(`Xóa toàn bộ số liệu ${monthLabel(E.thang).toLowerCase()} của phòng ${pbName(myPbId())}? Thao tác này không hoàn tác được (vẫn khôi phục được từ Nhật ký thay đổi trong Supabase).`))return;
+      try{S.busy=true;const n=await sbRpc("kpi_delete_kpi_pb",{p_thang:E.thang,p_pb:myPbId()});
+        for(const [k,r] of [...S.kpi.entries()])if(r.thang===E.thang&&nvPbId(r.ma)===myPbId())S.kpi.delete(k);
+        lsDel("kpi:draft3:"+E.thang);rebuild();S.ent=null;toast(`Đã xóa ${n} dòng của phòng ${pbName(myPbId())}.`);render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},"Xóa tháng của phòng"):null,
     isAdmin()&&E.rows.some(r=>r.exists)?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!E.confirmDel){E.confirmDel=true;render();return;}
       try{S.busy=true;await sbRpc("kpi_delete_kpi",{p_thang:E.thang,p_ma_nv:null});for(const k of [...S.kpi.keys()])if(k.startsWith(E.thang+"|"))S.kpi.delete(k);
         lsDel("kpi:draft3:"+E.thang);rebuild();S.ent=null;toast("Đã xóa số liệu "+monthLabel(E.thang).toLowerCase()+".");render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},E.confirmDel?"Bấm lần nữa để xóa cả tháng":"Xóa cả tháng"):null,
@@ -1069,24 +1079,24 @@ function viewDanhMuc(){
     if(S.dmSort)rows.sort(cmpBy(S.dmSort,n=>n.ma,n=>n.ten));
     const mgrMode=!isAdmin()&&isMgr();
     const tb=h("tbody",{},rows.map(n=>{
-      const rro=ro&&!(mgrMode&&canManage(n._k0||n.ma));   // Quản lý: sửa được dòng của phòng mình
+      const rro=ro&&!(mgrMode&&(n._k0==null||canManage(n._k0||n.ma)));   // Quản lý: sửa được dòng của phòng mình
       const sel=h("select",{disabled:ro,"aria-label":"Phòng ban của "+n.ten,onchange:e=>{n.pb=e.target.value||null;ch(n,"pb");mark("nv");}},pbOpts());sel.value=n.pb||"";
-      const cv=h("select",{disabled:ro,"aria-label":"Chức vụ của "+n.ten,onchange:e=>{n.cv=e.target.value||null;ch(n,"cv");mark("nv");}},cvOpts());cv.value=n.cv||"";
+      const cv=h("select",{disabled:ro&&!(mgrMode&&n._k0==null),"aria-label":"Chức vụ của "+n.ten,onchange:e=>{n.cv=e.target.value||null;ch(n,"cv");mark("nv");}},cvOpts());cv.value=n.cv||"";
       const kvSel=h("select",{disabled:rro,"aria-label":"Khu vực của "+n.ten,onchange:e=>{n.kv=e.target.value||null;ch(n,"kv");mark("nv");}},kvOpts());kvSel.value=n.kv||"";
       const sen=h("div",{class:"sen",title:"Thâm niên = Ngày hiện tại − Ngày chính thức"},seniority(n.nct));
       const setD=(k,lab)=>v=>{n._bad=n._bad||{};if(v===undefined){n._bad[k]=true;return;}delete n._bad[k];n[k]=v;ch(n,k);mark("nv");sen.textContent=seniority(n.nct);};
-      return h("tr",{},h("td",{},h("input",{type:"text",value:n.ma,disabled:ro,class:"mono",style:"width:100px","aria-label":"Mã NV",oninput:e=>{n.ma=e.target.value.trim();ch(n,"ma");mark("nv");}})),
+      return h("tr",{},h("td",{},h("input",{type:"text",value:n.ma,disabled:ro&&!(mgrMode&&n._k0==null),class:"mono",style:"width:100px","aria-label":"Mã NV",oninput:e=>{n.ma=e.target.value.trim();ch(n,"ma");mark("nv");}})),
         h("td",{},h("input",{type:"text",value:n.ten,disabled:rro,style:"min-width:190px;width:100%","aria-label":"Họ tên",oninput:e=>{n.ten=e.target.value;ch(n,"ten");mark("nv");}})),
         h("td",{},sel),h("td",{},cv),h("td",{},kvSel),
         h("td",{},dateBox(n.ns,setD("ns"),"Ngày sinh",rro)),
         h("td",{},dateBox(n.ntv,setD("ntv"),"Ngày thử việc",rro)),
         h("td",{},dateBox(n.nct,setD("nct"),"Ngày chính thức",rro),sen),
-        h("td",{},ro?null:h("button",{class:"rm",type:"button","aria-label":"Xóa "+n.ten,onclick:()=>{if(n._k0!=null)D.del.nv.add(n._k0);D.nv.splice(D.nv.indexOf(n),1);mark("nv");render();}},"×")));}));
+        h("td",{},ro&&!(mgrMode&&n._k0==null)?null:h("button",{class:"rm",type:"button","aria-label":"Xóa "+n.ten,onclick:()=>{if(n._k0!=null)D.del.nv.add(n._k0);D.nv.splice(D.nv.indexOf(n),1);mark("nv");render();}},"×")));}));
     const cnt=c=>D.nv.filter(n=>c==="_none"?!n.cv:n.cv===c).length;
     const paste=h("textarea",{placeholder:"Mã NV ⇥ Họ tên ⇥ Phòng ban ⇥ Chức vụ ⇥ Ngày sinh ⇥ Ngày thử việc ⇥ Ngày chính thức ⇥ Khu vực (mỗi người một dòng, copy thẳng từ Excel)","aria-label":"Dán danh sách nhân viên",style:"min-height:110px"});
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Danh sách nhân viên",h("span",{class:"small muted",style:"font-weight:400"},`  ${rows.length}/${D.nv.length} người`)),
         h("div",{class:"row"},sortSelect(S.dmSort,v=>{S.dmSort=v;render();}),h("input",{type:"search",placeholder:"Tìm mã hoặc tên…",value:S.dmQ||"","aria-label":"Tìm nhân viên",oninput:e=>{S.dmQ=e.target.value;clearTimeout(S._dq);S._dq=setTimeout(render,300);}}),
-          ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:D.pb[0]?D.pb[0].id:null,cv:null,kv:null,ns:null,ntv:null,nct:null,_id:uid2(),_k0:null,_chg:new Set(NV_F)});S.dmQ="";S.dmCv="";S.dmKv="";S.dmPb="";S.dmSort="";mark("nv");render();
+          ro&&!(mgrMode&&myPbId())?null:h("button",{class:"ghost",type:"button",onclick:()=>{D.nv.push({ma:"",ten:"",pb:mgrMode?myPbId():D.pb[0]?D.pb[0].id:null,cv:null,kv:null,ns:null,ntv:null,nct:null,_id:uid2(),_k0:null,_chg:new Set(NV_F)});S.dmQ="";S.dmCv="";S.dmKv="";S.dmPb="";S.dmSort="";mark("nv");render();
             setTimeout(()=>{const i=document.querySelectorAll(".dm-nv tbody tr:last-child input");i[0]&&i[0].focus();},0);}},"＋ Thêm nhân viên"))),
       h("div",{class:"scroll"},h("table",{class:"grid dm-nv dm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Mã NV"),h("th",{class:"l"},"Họ tên"),h("th",{class:"l"},"Phòng ban"),h("th",{class:"l"},"Chức vụ"),h("th",{class:"l"},"Khu vực"),
         h("th",{class:"l"},"Ngày sinh"),h("th",{class:"l"},"Ngày thử việc"),h("th",{class:"l",title:"Dòng nhỏ bên dưới là thâm niên = Ngày hiện tại − Ngày chính thức"},"Ngày chính thức / Thâm niên"),h("th",{}))),
@@ -1107,7 +1117,10 @@ function viewDanhMuc(){
       if(D.nv.some(n=>n._bad&&Object.keys(n._bad).length)){toast("Còn ô ngày nhập sai (viền đỏ). Sửa lại dạng dd/mm/yyyy rồi lưu.");return;}
       if(!isAdmin()){   // Quản lý: gửi từng người, chỉ các ô được phép, máy chủ kiểm tra lại quyền
         const ALLOW=["ten","kv","ns","ntv","nct"];let n=0;
-        try{for(const x of D.nv){if(!x._chg||!x._chg.size)continue;const patch={};x._chg.forEach(f=>{if(ALLOW.includes(f))patch[f]=f==="ten"?(x.ten||"").trim():x[f]??null;});
+        try{for(const x of D.nv){if(x._k0==null&&x._chg&&x._chg.size){   // người mới: thêm vào phòng mình
+              if(!(x.ma||"").trim()||!(x.ten||"").trim())throw new Error("Mỗi nhân viên mới cần có Mã NV và Họ tên.");
+              S.busy=true;try{await sbRpc("kpi_add_nv",{p_nv:{ma:x.ma.trim(),ten:x.ten.trim(),cv:x.cv||"",kv:x.kv||"",ns:x.ns||"",ntv:x.ntv||"",nct:x.nct||""}});}finally{S.busy=false;}n++;continue;}
+            if(!x._chg||!x._chg.size)continue;const patch={};x._chg.forEach(f=>{if(ALLOW.includes(f))patch[f]=f==="ten"?(x.ten||"").trim():x[f]??null;});
             if(!Object.keys(patch).length)continue;S.busy=true;try{await sbRpc("kpi_update_nv",{p_ma:x._k0?x.ma:x.ma,p_patch:patch});}finally{S.busy=false;}n++;}
           await loadLatest();S.dm=null;toast(`Đã lưu thông tin ${n} nhân viên.`);render();}catch(e){toast(errMsg(e));}
         return;}
@@ -1387,52 +1400,49 @@ function loaiTag(l){const x=CV_LOAI[l]||["?",""];return h("span",{class:"lt "+x[
 function pbar(p){return h("div",{class:"pbar",title:p+"%"},h("span",{style:`width:${Math.max(0,Math.min(100,p))}%`}),h("em",{},p+"%"));}
 
 /* =====================================================================
-   CÔNG VIỆC THÁNG
+   CÔNG VIỆC THÁNG (theo phòng ban)
    ===================================================================== */
+function taskPb(t){const m=String(t.ma_nv||"");return m.startsWith("PB:")?m.slice(3):nvPbId(m);}
+function canPlanPb(pb){if(!S.authMode)return isAdmin();return isAdmin()||(isMgr()&&!!myPbId()&&myPbId()===pb);}
+const planKey=(th,pb)=>th+"|"+fold("PB:"+pb);
 function viewCongViec(){
   const out=h("div",{class:"stack"});
   if(cvNeedUpgrade()){out.append(cvUpgradeBanner());return out;}
   const th=S.cvMonth||(S.cvMonth=thisMonth());
-  if(S.cvPb===undefined)S.cvPb=isMgr()?myPbId():isStaff()?(nvPbId(myMa())||""):"";
-  const emps=S.nv.filter(n=>!S.cvPb||n.pb===S.cvPb);
-  if(!S.cvMa||!emps.some(n=>fold(n.ma)===fold(S.cvMa)))S.cvMa=(myMa()&&emps.some(n=>isMe(n.ma)))?myMa():(emps[0]||{}).ma||"";
-  const canGenAll=isAdmin()||(isMgr()&&myPbId()&&(!S.cvPb||S.cvPb===myPbId()));
-  out.append(h("div",{class:"row"},cvMonthBar(()=>S.cvMonth,v=>{S.cvMonth=v;render();}),pbIdSelect(S.cvPb,v=>{S.cvPb=v;S.cvMa="";render();}),
-    h("span",{class:"spacer"}),
-    canGenAll&&S.cvMau.length?h("button",{class:"ghost",type:"button",title:"Tạo các việc cố định trong Danh mục cho những người bạn quản lý",onclick:async e=>{e.currentTarget.disabled=true;
-      try{const n=await sbRpc("cv_generate",{p_thang:th,p_ma:null});toast(n?`Đã tạo ${n} việc cố định cho ${monthLabel(th).toLowerCase()}.`:"Các việc cố định đã có đủ, không tạo thêm.");cvForce();render();}
-      catch(err){toast(errMsg(err));e.currentTarget.disabled=false;}}},"⚙ Tạo việc cố định cho cả phòng"):null));
+  if(!S.cvPbSel||!S.pb.some(p=>p.id===S.cvPbSel))S.cvPbSel=(isMgr()&&myPbId())||(isStaff()&&nvPbId(myMa()))||(S.pb[0]||{}).id||"";
+  out.append(h("div",{class:"row"},cvMonthBar(()=>S.cvMonth,v=>{S.cvMonth=v;render();}),h("span",{class:"spacer"}),
+    isAdmin()&&S.cvMau.length?h("button",{class:"ghost",type:"button",title:"Tạo các việc cố định trong Danh mục cho mọi phòng ban",onclick:async e=>{e.currentTarget.disabled=true;
+      try{const n=await sbRpc("cv_generate",{p_thang:th,p_pb:null});toast(n?`Đã tạo ${n} việc cố định cho ${monthLabel(th).toLowerCase()}.`:"Các phòng đã có đủ việc cố định.");cvForce();render();}
+      catch(err){toast(errMsg(err));e.currentTarget.disabled=false;}}},"⚙ Tạo việc cố định cho mọi phòng"):null));
   if(!cvReady(th,th)){out.append(h("p",{class:"muted"},S.cv.err||"Đang tải công việc…"));return out;}
   if(S.cv.err)out.append(h("p",{class:"banner"},S.cv.err));
-  if(!emps.length){out.append(h("div",{class:"panel empty"},h("p",{class:"muted"},"Chưa có nhân viên trong phòng ban này.")));return out;}
-  const tasksOf=ma=>S.cv.tasks.filter(t=>t.thang===th&&fold(t.ma_nv)===fold(ma));
-  // danh sách nhân viên bên trái
-  const list=h("div",{class:"cv-people"},emps.map(n=>{const a=cvAgg(tasksOf(n.ma));const pl=S.cv.plans.get(th+"|"+fold(n.ma));
-    return h("button",{type:"button",class:"cv-person"+(fold(n.ma)===fold(S.cvMa)?" on":""),onclick:()=>{S.cvMa=n.ma;render();}},
-      avatar(n.ten),h("span",{class:"cp-who"},h("span",{class:"cp-name"},n.ten,isMe(n.ma)?h("span",{class:"tag"},"bạn"):null),
-        h("span",{class:"cp-sub"},`${a.xong}/${a.tong} xong`+(a.qua_han?`, ${a.qua_han} quá hạn`:""))),
+  if(!S.pb.length){out.append(h("div",{class:"panel empty"},h("p",{class:"muted"},"Chưa có phòng ban. Admin khai báo trong Danh mục → Phòng ban.")));return out;}
+  const tasksOf=pb=>S.cv.tasks.filter(t=>t.thang===th&&taskPb(t)===pb);
+  const list=h("div",{class:"cv-people"},S.pb.map(p=>{const a=cvAgg(tasksOf(p.id));const pl=S.cv.plans.get(planKey(th,p.id));const ns=S.nv.filter(n=>n.pb===p.id).length;
+    return h("button",{type:"button",class:"cv-person"+(p.id===S.cvPbSel?" on":""),onclick:()=>{S.cvPbSel=p.id;render();}},
+      h("span",{class:"pb-ic","aria-hidden":"true"},"🏢"),h("span",{class:"cp-who"},h("span",{class:"cp-name"},p.ten,canPlanPb(p.id)&&!isAdmin()?h("span",{class:"tag"},"phòng bạn"):null),
+        h("span",{class:"cp-sub"},`${ns} người, ${a.xong}/${a.tong} việc xong`+(a.qua_han?`, ${a.qua_han} quá hạn`:""))),
       h("span",{class:"cp-r"},pl&&pl.chot?h("span",{title:"Đã chốt kế hoạch"},"🔒"):null,h("span",{class:"cp-rate"},a.tong?cvPct(a.rate):"–")));}));
-  out.append(h("div",{class:"cv-layout"},h("div",{class:"panel cv-left"},h("div",{class:"panel-head"},h("h3",{},"Nhân viên"),h("span",{class:"small muted"},emps.length+" người")),list),
-    cvBoard(th,S.cvMa,tasksOf(S.cvMa))));
+  out.append(h("div",{class:"cv-layout"},h("div",{class:"panel cv-left"},h("div",{class:"panel-head"},h("h3",{},"Phòng ban"),h("span",{class:"small muted"},S.pb.length+" phòng")),list),
+    cvBoardPb(th,S.cvPbSel,tasksOf(S.cvPbSel))));
   return out;}
-
-function cvBoard(th,ma,ts){
-  const nv=nvByMa(ma)||{ma,ten:ma};const pl=S.cv.plans.get(th+"|"+fold(ma))||{};const mg=canManage(ma),own=isMe(ma);const a=cvAgg(ts);
+function cvBoardPb(th,pb,ts){
+  const p=pbById(pb)||{ten:pb};const pl=S.cv.plans.get(planKey(th,pb))||{};const mg=canPlanPb(pb),adm=isAdmin();const a=cvAgg(ts);
   const order={co_dinh:0,ke_hoach:1,phat_sinh:2};ts=[...ts].sort((x,y)=>(order[x.loai]-order[y.loai])||String(x.han||"9").localeCompare(String(y.han||"9"))||String(x.tao_luc).localeCompare(String(y.tao_luc)));
   const box=h("div",{class:"stack cv-right"});
   const act=async(fn,okMsg)=>{try{const r=await fn();if(okMsg)toast(typeof okMsg==="function"?okMsg(r):okMsg);cvForce();render();}catch(e){toast(errMsg(e));}};
+  const members=S.nv.filter(n=>n.pb===pb);
   box.append(h("div",{class:"panel cv-head"},
-    h("div",{class:"who"},avatar(nv.ten),h("div",{},h("div",{class:"cv-name"},nv.ten,cvTag(ma)),h("div",{class:"small muted"},(pbName(nv.pb)||"")+(nv.ma?", "+nv.ma:"")))),
+    h("div",{class:"who"},h("span",{class:"pb-big","aria-hidden":"true"},"🏢"),h("div",{},h("div",{class:"cv-name"},p.ten),h("div",{class:"small muted"},`${members.length} nhân viên`+(members.filter(n=>n.cv==="Key"||n.cv==="Trưởng phòng").length?`, phụ trách: ${members.filter(n=>n.cv==="Key"||n.cv==="Trưởng phòng").map(n=>n.ten).slice(0,3).join(", ")}`:"")))),
     h("div",{class:"cv-plan"},pl.chot?h("span",{class:"chip ok"},`🔒 Đã chốt kế hoạch ${pl.chot_luc?fmtFull(String(pl.chot_luc).slice(0,10)):""}`):h("span",{class:"chip warn"},"Kế hoạch chưa chốt"),
       pl.chot_boi?h("span",{class:"small muted"},"bởi "+pl.chot_boi):null),
     h("div",{class:"cv-acts"},
-      mg&&S.cvMau.length?h("button",{class:"ghost",type:"button",onclick:()=>act(()=>sbRpc("cv_generate",{p_thang:th,p_ma:ma}),n=>n?`Đã tạo ${n} việc cố định.`:"Việc cố định đã có đủ.")},"⚙ Việc cố định"):null,
-      mg?h("button",{class:"ghost",type:"button",onclick:()=>act(()=>sbRpc("cv_set_plan",{p_thang:th,p_ma:ma,p_patch:{chot:!pl.chot}}),pl.chot?"Đã mở lại kế hoạch.":"Đã chốt kế hoạch. Việc thêm sau sẽ tính là phát sinh.")},pl.chot?"🔓 Mở lại kế hoạch":"🔒 Chốt kế hoạch"):null,
-      (mg||own)?h("button",{class:"btn",type:"button",onclick:()=>openTask(null,{thang:th,ma_nv:ma})},mg?(pl.chot?"＋ Việc phát sinh":"＋ Thêm việc"):"＋ Việc phát sinh"):null)));
+      mg&&S.cvMau.length?h("button",{class:"ghost",type:"button",onclick:()=>act(()=>sbRpc("cv_generate",{p_thang:th,p_pb:pb}),n=>n?`Đã tạo ${n} việc cố định.`:"Việc cố định đã có đủ.")},"⚙ Việc cố định"):null,
+      mg?h("button",{class:"ghost",type:"button",onclick:()=>act(()=>sbRpc("cv_set_plan",{p_thang:th,p_pb:pb,p_patch:{chot:!pl.chot}}),pl.chot?"Đã mở lại kế hoạch.":"Đã chốt kế hoạch. Việc thêm sau sẽ tính là phát sinh.")},pl.chot?"🔓 Mở lại kế hoạch":"🔒 Chốt kế hoạch"):null,
+      mg?h("button",{class:"btn",type:"button",onclick:()=>openTask(null,{thang:th,pb})},pl.chot?"＋ Việc phát sinh":"＋ Thêm việc"):null)));
   box.append(h("div",{class:"cv-stats"},
     [["Tổng việc",a.tong,`${a.co_dinh} cố định, ${a.ke_hoach} kế hoạch, ${a.phat_sinh} phát sinh`],["Hoàn thành",a.xong,cvPct(a.rate)+" tổng số việc"],
-     ["Đang làm",a.dang,""],["Quá hạn",a.qua_han,""],["Chưa bắt đầu",a.chua,""],
-     ["Tự đánh giá TB",a.tuTB==null?"—":fmt(a.tuTB,0)+"%",""],["Quản lý đánh giá TB",a.qlTB==null?"—":fmt(a.qlTB,0)+"%",""]]
+     ["Đang làm",a.dang,""],["Quá hạn",a.qua_han,""],["Chưa bắt đầu",a.chua,""],["Đánh giá TB",a.qlTB==null?"—":fmt(a.qlTB,0)+"%",""]]
     .map(([l,v,s],i)=>h("div",{class:"cv-stat s"+i},h("div",{class:"lab"},l),h("div",{class:"val"},String(v)),s?h("div",{class:"sub"},s):null))));
   box.append(h("div",{class:"panel cv-cmp"},h("strong",{},"📋 Kế hoạch so với thực tế: "),
     a.kh?`Kế hoạch ${a.kh} việc, hoàn thành ${a.khXong} (${cvPct(a.khRate)}). `:"Chưa có việc trong kế hoạch. ",
@@ -1441,28 +1451,28 @@ function cvBoard(th,ma,ts){
   const rows=ts.map(t=>{const st=cvStatus(t);const g=t.ke_hoach_goc;const hanDoi=g&&(g.han||null)!==(t.han||null);
     return h("tr",{class:"cv-row st-"+st,tabindex:"0",onclick:()=>openTask(t),onkeydown:e=>{if(e.key==="Enter")openTask(t);}},
       h("td",{},loaiTag(t.loai)),
-      h("td",{class:"l"},h("div",{class:"cv-t"},t.ten),h("div",{class:"cv-meta"},nhomName(t.nhom)?h("span",{class:"tag"},nhomName(t.nhom)):null,t.ket_qua_mong_muon?h("span",{class:"small muted"},"🎯 "+t.ket_qua_mong_muon):null)),
+      h("td",{class:"l"},h("div",{class:"cv-t"},t.ten),h("div",{class:"cv-meta"},nhomName(t.nhom)?h("span",{class:"tag"},nhomName(t.nhom)):null,t.ket_qua_mong_muon?h("span",{class:"small muted"},"🎯 "+t.ket_qua_mong_muon):null,
+        t.ket_qua?h("span",{class:"small",style:"color:var(--ok)"},"✔ "+t.ket_qua):null)),
       h("td",{},t.han?fmtFull(t.han).slice(0,5):"—",hanDoi?h("div",{class:"small",style:"color:var(--warn)"},"gốc "+(g.han?fmtFull(g.han).slice(0,5):"—")):null),
       h("td",{style:"min-width:120px"},pbar(+t.tien_do||0)),h("td",{class:"c"},cvChip(st)),
-      h("td",{},t.tu_danh_gia==null?"—":t.tu_danh_gia+"%"),h("td",{},t.ql_danh_gia==null?"—":h("strong",{},t.ql_danh_gia+"%")),
-      h("td",{class:"c"},h("span",{class:"faint"},"✎")));});
-  box.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},`Công việc ${monthLabel(th).toLowerCase()}`),h("span",{class:"small muted"},"Bấm vào một việc để cập nhật")),
-    rows.length?h("div",{class:"scroll"},h("table",{class:"grid cv-tbl"},h("thead",{},h("tr",{},h("th",{},"Loại"),h("th",{class:"l"},"Công việc"),h("th",{},"Hạn"),h("th",{},"Tiến độ"),h("th",{class:"c"},"Trạng thái"),h("th",{},"Tự ĐG"),h("th",{},"QL ĐG"),h("th",{}))),h("tbody",{},rows)))
-    :h("div",{class:"empty"},h("p",{class:"muted"},mg?"Chưa có việc nào. Bấm “⚙ Việc cố định” hoặc “＋ Thêm việc” để lập kế hoạch tháng.":"Chưa có việc nào trong tháng này."))));
-  // nhận xét tháng của quản lý
-  const nx=h("textarea",{placeholder:mg?"Nhận xét chung về kết quả tháng…":"Chưa có nhận xét",disabled:!mg,"aria-label":"Nhận xét tháng",style:"min-height:80px"});nx.value=pl.nhan_xet||"";
+      h("td",{},t.ql_danh_gia==null?"—":h("strong",{},t.ql_danh_gia+"%")),h("td",{class:"c"},h("span",{class:"faint"},"✎")));});
+  box.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},`Công việc của phòng, ${monthLabel(th).toLowerCase()}`),h("span",{class:"small muted"},adm?"Bấm vào một việc để cập nhật tiến độ, kết quả":"Bấm vào một việc để xem chi tiết")),
+    rows.length?h("div",{class:"scroll"},h("table",{class:"grid cv-tbl"},h("thead",{},h("tr",{},h("th",{},"Loại"),h("th",{class:"l"},"Công việc"),h("th",{},"Hạn"),h("th",{},"Tiến độ"),h("th",{class:"c"},"Trạng thái"),h("th",{},"Đánh giá"),h("th",{}))),h("tbody",{},rows)))
+    :h("div",{class:"empty"},h("p",{class:"muted"},mg?"Chưa có việc nào. Bấm “⚙ Việc cố định” hoặc “＋ Thêm việc” để lập kế hoạch tháng của phòng.":"Phòng chưa có việc nào trong tháng này.")),
+    h("p",{class:"hint",style:"margin-top:10px"},"Tiến độ và kết quả do Admin cập nhật. Admin và Quản lý của phòng lập kế hoạch và chấm đánh giá.")));
+  const nx=h("textarea",{placeholder:mg?"Nhận xét chung về kết quả tháng của phòng…":"Chưa có nhận xét",disabled:!mg,"aria-label":"Nhận xét tháng",style:"min-height:80px"});nx.value=pl.nhan_xet||"";
   const dg=h("input",{type:"number",min:"0",max:"100",step:"1",disabled:!mg,"aria-label":"Đánh giá chung",style:"width:110px",value:pl.danh_gia==null?"":String(pl.danh_gia)});
-  box.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"💬 Nhận xét và đánh giá tháng của quản lý"),pl.danh_gia_boi?h("span",{class:"small muted"},`${pl.danh_gia_boi}, ${pl.danh_gia_luc?fmtFull(String(pl.danh_gia_luc).slice(0,10)):""}`):null),
+  box.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"💬 Nhận xét và đánh giá tháng của phòng"),pl.danh_gia_boi?h("span",{class:"small muted"},`${pl.danh_gia_boi}, ${pl.danh_gia_luc?fmtFull(String(pl.danh_gia_luc).slice(0,10)):""}`):null),
     nx,h("div",{class:"row",style:"margin-top:10px"},h("label",{class:"field"},"Đánh giá chung (%)",dg),h("span",{class:"spacer"}),
       mg?h("button",{class:"btn",type:"button",onclick:()=>{const v=dg.value.trim();if(v!==""&&(+v<0||+v>100)){toast("Đánh giá từ 0 đến 100%.");return;}
-        act(()=>sbRpc("cv_set_plan",{p_thang:th,p_ma:ma,p_patch:{nhan_xet:nx.value,danh_gia:v===""?null:+v}}),"Đã lưu nhận xét tháng.");}},"Lưu nhận xét"):null)));
+        act(()=>sbRpc("cv_set_plan",{p_thang:th,p_pb:pb,p_patch:{nhan_xet:nx.value,danh_gia:v===""?null:+v}}),"Đã lưu nhận xét tháng.");}},"Lưu nhận xét"):null)));
   return box;}
 
-/* ---------- khung sửa một công việc ---------- */
+/* ---------- khung sửa một việc của phòng ---------- */
 function openTask(t,base){
-  const isNew=!t;t=t||{thang:base.thang,ma_nv:base.ma_nv,ten:"",nhom:"",loai:"",mo_ta:"",bat_dau:null,han:null,gio_du_kien:null,ket_qua_mong_muon:"",tien_do:0,ket_qua:"",tu_danh_gia:null,ql_danh_gia:null,ql_nhan_xet:""};
-  const ma=t.ma_nv,mg=canManage(ma),own=isMe(ma);
-  const planOk=isNew||mg||(own&&t.loai==="phat_sinh");const doOk=mg||own;const selfOk=own||isAdmin();
+  const isNew=!t;const pb=t?taskPb(t):base.pb;
+  t=t||{thang:base.thang,ten:"",nhom:"",loai:"",mo_ta:"",bat_dau:null,han:null,gio_du_kien:null,ket_qua_mong_muon:"",tien_do:0,ket_qua:"",ql_danh_gia:null,ql_nhan_xet:""};
+  const planOk=canPlanPb(pb),doOk=isAdmin(),evalOk=canPlanPb(pb);
   const d={...t};const bad={};
   const back=h("div",{class:"cv-modal-back",onclick:e=>{if(e.target===back)close();}});
   const close=()=>{back.remove();S.cvModal=false;document.removeEventListener("keydown",esc,true);};
@@ -1476,8 +1486,8 @@ function openTask(t,base){
   range.addEventListener("input",()=>{d.tien_do=+range.value;rnum.value=range.value;});
   rnum.addEventListener("input",()=>{const v=Math.max(0,Math.min(100,+rnum.value||0));d.tien_do=v;range.value=String(v);});
   const g=t.ke_hoach_goc;
-  const card=h("div",{class:"cv-modal",role:"dialog","aria-modal":"true","aria-label":isNew?"Thêm công việc":"Cập nhật công việc"},
-    h("div",{class:"cvm-head"},h("div",{},h("div",{class:"small muted"},(nvByMa(ma)||{}).ten||ma,", ",monthLabel(t.thang)),h("h3",{},isNew?"Thêm công việc":t.ten),
+  const card=h("div",{class:"cv-modal",role:"dialog","aria-modal":"true","aria-label":isNew?"Thêm công việc":"Công việc"},
+    h("div",{class:"cvm-head"},h("div",{},h("div",{class:"small muted"},"🏢 "+pbName(pb),", ",monthLabel(t.thang)),h("h3",{},isNew?"Thêm công việc cho phòng":t.ten),
       !isNew?h("div",{class:"row",style:"gap:6px;margin-top:4px"},loaiTag(t.loai),cvChip(cvStatus(t))):null),h("button",{class:"g-x",type:"button","aria-label":"Đóng",onclick:()=>close()},"×")),
     h("div",{class:"cvm-body"},
       h("h4",{},"📝 Kế hoạch"),
@@ -1487,39 +1497,37 @@ function openTask(t,base){
         fld("Giờ dự kiến",numIn("gio_du_kien",planOk,999)),
         fld("Kết quả mong muốn",txt("ket_qua_mong_muon",planOk,"Kết quả cần đạt được",true),true),fld("Mô tả",txt("mo_ta",planOk,"",true),true)),
       g?h("div",{class:"cvm-goc"},h("strong",{},"Kế hoạch gốc lúc chốt: "),`${g.ten||""}`,g.han?`, hạn ${fmtFull(g.han)}`:"",g.ket_qua_mong_muon?`, mong muốn: ${g.ket_qua_mong_muon}`:""):null,
-      h("h4",{},"⚙ Thực hiện"),
+      h("h4",{},"⚙ Thực hiện ",h("span",{class:"small muted",style:"font-weight:400"},"(Admin cập nhật)")),
       h("div",{class:"cvm-grid"},fld("Tiến độ (%)",h("div",{class:"row",style:"gap:10px;flex-wrap:nowrap"},range,rnum),true),
-        fld("Kết quả thực hiện",txt("ket_qua",doOk,"Đã làm được gì, số liệu, link…",true),true),
-        fld("Tự đánh giá mức độ hoàn thành (%)",numIn("tu_danh_gia",selfOk))),
-      h("h4",{},"⭐ Đánh giá của quản lý"),
-      h("div",{class:"cvm-grid"},fld("Quản lý đánh giá (%)",numIn("ql_danh_gia",mg)),fld("Nhận xét",txt("ql_nhan_xet",mg,mg?"Nhận xét cho người thực hiện":"Chưa có nhận xét",true),true),
+        fld("Kết quả thực hiện",txt("ket_qua",doOk,doOk?"Đã làm được gì, số liệu, đường link…":"Chưa có kết quả",true),true)),
+      h("h4",{},"⭐ Đánh giá ",h("span",{class:"small muted",style:"font-weight:400"},"(Admin, Quản lý phòng)")),
+      h("div",{class:"cvm-grid"},fld("Đánh giá (%)",numIn("ql_danh_gia",evalOk)),fld("Nhận xét",txt("ql_nhan_xet",evalOk,evalOk?"Nhận xét về kết quả":"Chưa có nhận xét",true),true),
         t.ql_boi?h("div",{class:"small muted wide"},`Đánh giá bởi ${t.ql_boi}${t.ql_luc?", "+fmtFull(String(t.ql_luc).slice(0,10)):""}`):null)),
     h("div",{class:"cvm-foot"},
-      !isNew&&(mg||(own&&t.loai==="phat_sinh"))?h("button",{class:"ghost danger",type:"button",onclick:async e=>{if(!confirm("Xóa công việc này?"))return;
+      !isNew&&planOk?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!confirm("Xóa công việc này?"))return;
         try{await sbRpc("cv_delete_task",{p_id:t.id});S.cv.tasks=S.cv.tasks.filter(x=>x.id!==t.id);close();toast("Đã xóa công việc.");render();}catch(err){toast(errMsg(err));}}},"Xóa"):null,
-      h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:()=>close()},"Hủy"),
-      h("button",{class:"btn",type:"button",onclick:async e=>{
+      h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:()=>close()},planOk||doOk?"Hủy":"Đóng"),
+      planOk||doOk||evalOk?h("button",{class:"btn",type:"button",onclick:async e=>{
         if(Object.keys(bad).length){toast("Ngày nhập sai, sửa lại dạng dd/mm/yyyy.");return;}
         if(!(d.ten||"").trim()){toast("Nhập tên công việc.");return;}
-        for(const k of ["tu_danh_gia","ql_danh_gia"])if(d[k]!=null&&(d[k]<0||d[k]>100)){toast("Đánh giá từ 0 đến 100%.");return;}
-        const P=["ten","nhom","mo_ta","bat_dau","han","gio_du_kien","ket_qua_mong_muon"],DO=["tien_do","ket_qua"];
-        const patch=isNew?{thang:t.thang,ma_nv:ma,loai:"ke_hoach"}:{id:t.id};
+        if(d.ql_danh_gia!=null&&(d.ql_danh_gia<0||d.ql_danh_gia>100)){toast("Đánh giá từ 0 đến 100%.");return;}
+        const P=["ten","nhom","mo_ta","bat_dau","han","gio_du_kien","ket_qua_mong_muon"],DO=["tien_do","ket_qua"],EV=["ql_danh_gia","ql_nhan_xet"];
+        const patch=isNew?{thang:t.thang,pb_id:pb,loai:"ke_hoach"}:{id:t.id};
         const diff=k=>isNew?(d[k]!=null&&d[k]!==""&&!(k==="tien_do"&&!d[k])):((d[k]??null)!==(t[k]??null));
         if(planOk)P.forEach(k=>{if(diff(k))patch[k]=d[k]??null;});
         if(doOk)DO.forEach(k=>{if(diff(k))patch[k]=d[k]??(k==="tien_do"?0:"");});
-        if(selfOk&&diff("tu_danh_gia"))patch.tu_danh_gia=d.tu_danh_gia;
-        if(mg){if(diff("ql_danh_gia"))patch.ql_danh_gia=d.ql_danh_gia;if(diff("ql_nhan_xet"))patch.ql_nhan_xet=d.ql_nhan_xet;}
+        if(evalOk)EV.forEach(k=>{if(diff(k))patch[k]=d[k]??(k==="ql_nhan_xet"?"":null);});
         if(!isNew&&Object.keys(patch).length===1){close();return;}
         const b=e.currentTarget;b.disabled=true;b.textContent="Đang lưu…";
         try{S.busy=true;const r=await sbRpc("cv_save_task",{p:patch});S.busy=false;
           const i=S.cv.tasks.findIndex(x=>x.id===r.id);if(i>=0)S.cv.tasks[i]=r;else S.cv.tasks.push(r);
-          close();toast(isNew?(r.loai==="phat_sinh"?"Đã thêm việc phát sinh.":"Đã thêm việc vào kế hoạch."):"Đã lưu công việc.");render();}
-        catch(err){S.busy=false;toast(errMsg(err));b.disabled=false;b.textContent="Lưu";}}},"Lưu")));
+          close();toast(isNew?(r.loai==="phat_sinh"?"Đã thêm việc phát sinh cho phòng.":"Đã thêm việc vào kế hoạch của phòng."):"Đã lưu công việc.");render();}
+        catch(err){S.busy=false;toast(errMsg(err));b.disabled=false;b.textContent="Lưu";}}},"Lưu"):null));
   back.append(card);document.body.append(back);S.cvModal=true;document.addEventListener("keydown",esc,true);
   setTimeout(()=>{const f=card.querySelector("input:not([disabled]),textarea:not([disabled])");if(f)f.focus();},30);}
 
 /* =====================================================================
-   BÁO CÁO CÔNG VIỆC
+   BÁO CÁO CÔNG VIỆC (theo phòng ban)
    ===================================================================== */
 function viewBaoCaoCV(){
   const out=h("div",{class:"stack"});
@@ -1528,10 +1536,8 @@ function viewBaoCaoCV(){
   const ys=[...new Set([thisYear,thisYear-1,Y])].sort((a,b)=>b-a);
   const ySel=h("select",{"aria-label":"Năm",onchange:e=>{S.rcY=+e.target.value;render();}},ys.map(y=>h("option",{value:String(y)},"Năm "+y)));ySel.value=String(Y);
   const mSel=h("select",{"aria-label":"Tháng",onchange:e=>{S.rcM=e.target.value;render();}},h("option",{value:""},"Cả năm"),Array.from({length:12},(_,i)=>h("option",{value:pad(i+1)},"Tháng "+(i+1))));mSel.value=M;
-  const nvSel=h("select",{"aria-label":"Nhân viên",onchange:e=>{S.rcNv=e.target.value;render();}},h("option",{value:""},"Tất cả nhân viên"),S.nv.filter(n=>!S.rcPb||n.pb===S.rcPb).map(n=>h("option",{value:n.ma},n.ten)));nvSel.value=S.rcNv||"";
   const gSel=h("select",{"aria-label":"Nhóm công việc",onchange:e=>{S.rcG=e.target.value;render();}},h("option",{value:""},"Tất cả nhóm việc"),S.cvNhom.map(g=>h("option",{value:g.id},g.ten)));gSel.value=S.rcG||"";
-  out.append(h("div",{class:"row"},ySel,mSel,pbIdSelect(S.rcPb,v=>{S.rcPb=v;S.rcNv="";render();}),nvSel,gSel,h("span",{class:"spacer"}),
-    h("button",{class:"ghost",type:"button",onclick:()=>exportCV()},"⬇ Tải Excel")));
+  out.append(h("div",{class:"row"},ySel,mSel,pbIdSelect(S.rcPb,v=>{S.rcPb=v;render();}),gSel,h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:()=>exportCV()},"⬇ Tải Excel")));
   if(!cvReady(Y+"-01",Y+"-12")){out.append(h("p",{class:"muted"},S.cv.err||"Đang tải dữ liệu công việc…"));return out;}
   const F=cvFilter();const ts=F.ts;const A=cvAgg(ts);
   if(!ts.length){out.append(h("div",{class:"panel empty"},h("div",{class:"big-emoji"},"📭"),h("h2",{},"Chưa có công việc phù hợp bộ lọc"),h("p",{class:"muted"},"Lập kế hoạch ở mục Công việc tháng, hoặc đổi bộ lọc.")));return out;}
@@ -1539,36 +1545,35 @@ function viewBaoCaoCV(){
     tile("Tổng số công việc",String(A.tong),`${A.co_dinh} cố định, ${A.ke_hoach} kế hoạch, ${A.phat_sinh} phát sinh`,null),
     tile("Tỷ lệ hoàn thành",cvPct(A.rate),`${A.xong}/${A.tong} việc hoàn thành`,null,A.rate==null?null:A.rate*100),
     tile("Đang làm / Quá hạn / Chưa xong",`${A.dang} / ${A.qua_han} / ${A.chuaHT}`,`${A.chua} việc chưa bắt đầu`,null),
-    tile("Tự đánh giá / Quản lý đánh giá",`${A.tuTB==null?"—":fmt(A.tuTB,0)+"%"} / ${A.qlTB==null?"—":fmt(A.qlTB,0)+"%"}`,`Kế hoạch: xong ${A.khXong}/${A.kh} (${cvPct(A.khRate)})`,null)));
-  // theo nhân viên
-  const byNv=new Map();for(const t of ts){const k=fold(t.ma_nv);if(!byNv.has(k))byNv.set(k,{ma:t.ma_nv,ts:[]});byNv.get(k).ts.push(t);}
-  const people=[...byNv.values()].map(x=>({...x,nv:nvByMa(x.ma)||{ten:x.ma,pb:null},a:cvAgg(x.ts)})).sort((p,q)=>(q.a.rate??-1)-(p.a.rate??-1)||q.a.tong-p.a.tong);
-  const c1=h("div",{class:"chartbox",style:`height:${Math.max(220,people.length*30+70)}px`},h("canvas",{"aria-label":"Trạng thái công việc theo nhân viên"}));
+    tile("Đánh giá TB",A.qlTB==null?"—":fmt(A.qlTB,0)+"%",`Kế hoạch: xong ${A.khXong}/${A.kh} (${cvPct(A.khRate)}), đúng hạn ${cvPct(A.dhRate)}`,null)));
+  const groups=S.pb.map(p=>({p,ts:ts.filter(t=>taskPb(t)===p.id)})).filter(x=>x.ts.length).map(x=>({...x,a:cvAgg(x.ts)}));
+  groups.sort((x,y)=>(y.a.rate??-1)-(x.a.rate??-1)||y.a.tong-x.a.tong);
+  const c1=h("div",{class:"chartbox",style:`height:${Math.max(220,groups.length*40+80)}px`},h("canvas",{"aria-label":"Trạng thái công việc theo phòng ban"}));
   const c2=h("div",{class:"chartbox",style:"height:300px"},h("canvas",{"aria-label":M?"Kế hoạch so với thực tế":"Theo tháng"}));
-  out.append(h("div",{class:"two-col"},h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Trạng thái công việc theo nhân viên")),c1),
+  out.append(h("div",{class:"two-col"},h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Trạng thái công việc theo phòng ban")),c1),
     h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},M?"Kế hoạch so với thực tế":"Số việc và tỷ lệ hoàn thành theo tháng")),c2)));
-  const head=["Nhân viên","Tổng","Cố định","Kế hoạch","Phát sinh","Hoàn thành","Đang làm","Quá hạn","Chưa HT","Tỷ lệ HT","KH: xong/giao","Đúng hạn","Tự ĐG TB","QL ĐG TB"];
-  out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Tổng hợp theo nhân viên"),h("span",{class:"small muted"},F.label)),
+  const head=["Phòng ban","Tổng","Cố định","Kế hoạch","Phát sinh","Hoàn thành","Đang làm","Quá hạn","Chưa HT","Tỷ lệ HT","KH: xong/giao","Đúng hạn","Đánh giá TB"];
+  out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Tổng hợp theo phòng ban"),h("span",{class:"small muted"},F.label)),
     h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},head.map((x,i)=>h("th",{class:i?"":"l"},x)))),
-      h("tbody",{},people.map(p=>{const a=p.a;return h("tr",{},h("td",{class:"l"},h("div",{class:"who-cv"},who(p.nv.ten),cvTag(p.ma)),h("div",{class:"small muted"},pbName(p.nv.pb)||"")),
-        h("td",{},h("strong",{},String(a.tong))),h("td",{},String(a.co_dinh)),h("td",{},String(a.ke_hoach)),h("td",{},String(a.phat_sinh)),
+      h("tbody",{},groups.map(({p,a})=>h("tr",{},h("td",{class:"l"},h("strong",{},p.ten)),h("td",{},h("strong",{},String(a.tong))),h("td",{},String(a.co_dinh)),h("td",{},String(a.ke_hoach)),h("td",{},String(a.phat_sinh)),
         h("td",{},String(a.xong)),h("td",{},String(a.dang)),h("td",{class:a.qua_han?"tb bad":""},String(a.qua_han)),h("td",{},String(a.chuaHT)),
         h("td",{class:"tb "+(a.rate==null?"":a.rate>=.8?"ok":a.rate<.5?"bad":"")},cvPct(a.rate)),h("td",{},`${a.khXong}/${a.kh}`),h("td",{},cvPct(a.dhRate)),
-        h("td",{},a.tuTB==null?"—":fmt(a.tuTB,0)+"%"),h("td",{},a.qlTB==null?"—":h("strong",{},fmt(a.qlTB,0)+"%")));}))))));
-  // hiệu suất theo tháng
+        h("td",{},a.qlTB==null?"—":h("strong",{},fmt(a.qlTB,0)+"%")))),
+        groups.length>1?h("tr",{class:"grp"},h("td",{class:"l"},h("strong",{},"Toàn đội")),h("td",{},h("strong",{},String(A.tong))),h("td",{},String(A.co_dinh)),h("td",{},String(A.ke_hoach)),h("td",{},String(A.phat_sinh)),
+          h("td",{},String(A.xong)),h("td",{},String(A.dang)),h("td",{},String(A.qua_han)),h("td",{},String(A.chuaHT)),h("td",{},h("strong",{},cvPct(A.rate))),h("td",{},`${A.khXong}/${A.kh}`),h("td",{},cvPct(A.dhRate)),h("td",{},A.qlTB==null?"—":fmt(A.qlTB,0)+"%")):null)))));
   if(!M){const months=Array.from({length:12},(_,i)=>`${Y}-${pad(i+1)}`);
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},`So sánh tỷ lệ hoàn thành theo tháng, năm ${Y}`),h("span",{class:"small muted"},"Ô xanh ≥ 80%, đỏ < 50%")),
-      h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},h("th",{class:"l"},"Nhân viên"),months.map(m=>h("th",{},"T"+(+m.slice(5)))),h("th",{},"Cả năm"))),
-        h("tbody",{},people.map(p=>h("tr",{},h("td",{class:"l"},p.nv.ten),months.map(m=>{const a=cvAgg(p.ts.filter(t=>t.thang===m));
-          return h("td",{class:"hc "+(a.rate==null?"":a.rate>=.8?"ok":a.rate<.5?"bad":""),title:a.tong?`${a.xong}/${a.tong} việc`:""},a.tong?cvPct(a.rate):"·");}),
-          h("td",{class:"hc yr"},h("strong",{},cvPct(p.a.rate))))))))));}
+      h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},h("th",{class:"l"},"Phòng ban"),months.map(m=>h("th",{},"T"+(+m.slice(5)))),h("th",{},"Cả năm"))),
+        h("tbody",{},groups.map(({p,ts:list,a})=>h("tr",{},h("td",{class:"l"},p.ten),months.map(m=>{const x=cvAgg(list.filter(t=>t.thang===m));
+          return h("td",{class:"hc "+(x.rate==null?"":x.rate>=.8?"ok":x.rate<.5?"bad":""),title:x.tong?`${x.xong}/${x.tong} việc`:""},x.tong?cvPct(x.rate):"·");}),
+          h("td",{class:"hc yr"},h("strong",{},cvPct(a.rate))))))))));}
   S.after.push(()=>{const ok=cv("--ok"),bad=cv("--bad"),info=cv("--brand"),none=cv("--faint");
-    const ch1=mkChart(c1.querySelector("canvas"),{type:"bar",data:{labels:people.map(p=>p.nv.ten),datasets:[["Hoàn thành","xong",ok],["Đang làm","dang",info],["Quá hạn","qua_han",bad],["Chưa bắt đầu","chua",none]]
-        .map(([l,k,c])=>({label:l,data:people.map(p=>p.a[k]),backgroundColor:c,borderRadius:4,maxBarThickness:22}))},
+    const ch1=mkChart(c1.querySelector("canvas"),{type:"bar",data:{labels:groups.map(x=>x.p.ten),datasets:[["Hoàn thành","xong",ok],["Đang làm","dang",info],["Quá hạn","qua_han",bad],["Chưa bắt đầu","chua",none]]
+        .map(([l,k,c])=>({label:l,data:groups.map(x=>x.a[k]),backgroundColor:c,borderRadius:4,maxBarThickness:26}))},
       options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom"}},scales:{x:{stacked:true,beginAtZero:true,ticks:{precision:0}},y:{stacked:true,grid:{display:false}}}}});if(ch1)S.charts.push(ch1);
     let cfg;
-    if(M)cfg={type:"bar",data:{labels:people.map(p=>p.nv.ten),datasets:[{label:"Việc trong kế hoạch",data:people.map(p=>p.a.kh),backgroundColor:info,borderRadius:4},
-        {label:"Kế hoạch đã xong",data:people.map(p=>p.a.khXong),backgroundColor:ok,borderRadius:4},{label:"Phát sinh",data:people.map(p=>p.a.phat_sinh),backgroundColor:"#F7A04B",borderRadius:4}]},
+    if(M)cfg={type:"bar",data:{labels:groups.map(x=>x.p.ten),datasets:[{label:"Việc trong kế hoạch",data:groups.map(x=>x.a.kh),backgroundColor:info,borderRadius:4},
+        {label:"Kế hoạch đã xong",data:groups.map(x=>x.a.khXong),backgroundColor:ok,borderRadius:4},{label:"Phát sinh",data:groups.map(x=>x.a.phat_sinh),backgroundColor:"#F7A04B",borderRadius:4}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom"}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}};
     else{const months=Array.from({length:12},(_,i)=>`${Y}-${pad(i+1)}`);const per=months.map(m=>cvAgg(ts.filter(t=>t.thang===m)));
       cfg={data:{labels:months.map(m=>"T"+(+m.slice(5))),datasets:[{type:"bar",label:"Số việc",data:per.map(a=>a.tong),backgroundColor:info,borderRadius:4,yAxisID:"y"},
@@ -1577,23 +1582,22 @@ function viewBaoCaoCV(){
     const ch2=mkChart(c2.querySelector("canvas"),cfg);if(ch2)S.charts.push(ch2);});
   return out;}
 function cvFilter(){const Y=S.rcY,M=S.rcM;let ts=S.cv.tasks.filter(t=>t.thang.startsWith(Y+"-")&&(!M||t.thang===`${Y}-${M}`));
-  if(S.rcPb)ts=ts.filter(t=>nvPbId(t.ma_nv)===S.rcPb);if(S.rcNv)ts=ts.filter(t=>fold(t.ma_nv)===fold(S.rcNv));if(S.rcG)ts=ts.filter(t=>t.nhom===S.rcG);
-  const label=[M?`Tháng ${+M}/${Y}`:`Năm ${Y}`,S.rcPb?pbName(S.rcPb):"",S.rcNv?(nvByMa(S.rcNv)||{}).ten:"",S.rcG?nhomName(S.rcG):""].filter(Boolean).join(", ");return {ts,label};}
+  if(S.rcPb)ts=ts.filter(t=>taskPb(t)===S.rcPb);if(S.rcG)ts=ts.filter(t=>t.nhom===S.rcG);
+  const label=[M?`Tháng ${+M}/${Y}`:`Năm ${Y}`,S.rcPb?pbName(S.rcPb):"",S.rcG?nhomName(S.rcG):""].filter(Boolean).join(", ");return {ts,label};}
 function exportCV(){if(!window.XLSX){toast("Không tải được thư viện Excel.");return;}
   const F=cvFilter();const ts=F.ts;if(!ts.length){toast("Không có dữ liệu để xuất.");return;}
-  const byNv=new Map();ts.forEach(t=>{const k=fold(t.ma_nv);if(!byNv.has(k))byNv.set(k,[]);byNv.get(k).push(t);});
-  const sum=[["BÁO CÁO CÔNG VIỆC: "+F.label],[],["Mã NV","Nhân viên","Phòng ban","Tổng","Cố định","Kế hoạch","Phát sinh","Hoàn thành","Đang làm","Quá hạn","Chưa hoàn thành","Tỷ lệ HT (%)","KH đã xong","KH được giao","Đúng hạn (%)","Tự ĐG TB (%)","QL ĐG TB (%)"]];
-  const r1=x=>x==null?null:Math.round(x*10)/10;
-  for(const [k,list] of byNv){const a=cvAgg(list);const n=nvByMa(list[0].ma_nv)||{ten:list[0].ma_nv};
-    sum.push([list[0].ma_nv,n.ten,pbName(n.pb),a.tong,a.co_dinh,a.ke_hoach,a.phat_sinh,a.xong,a.dang,a.qua_han,a.chuaHT,a.rate==null?null:r1(a.rate*100),a.khXong,a.kh,a.dhRate==null?null:r1(a.dhRate*100),r1(a.tuTB),r1(a.qlTB)]);}
-  const det=[["Tháng","Mã NV","Nhân viên","Loại","Nhóm","Công việc","Bắt đầu","Hạn","Hạn gốc","Kết quả mong muốn","Tiến độ (%)","Trạng thái","Kết quả thực hiện","Tự ĐG (%)","QL ĐG (%)","Nhận xét QL","Hoàn thành lúc"]];
-  ts.forEach(t=>det.push([t.thang,t.ma_nv,(nvByMa(t.ma_nv)||{}).ten||"",(CV_LOAI[t.loai]||[""])[0],nhomName(t.nhom),t.ten,t.bat_dau?fmtFull(t.bat_dau):"",t.han?fmtFull(t.han):"",
-    t.ke_hoach_goc&&t.ke_hoach_goc.han?fmtFull(t.ke_hoach_goc.han):"",t.ket_qua_mong_muon,+t.tien_do||0,CV_ST[cvStatus(t)][0],t.ket_qua,t.tu_danh_gia,t.ql_danh_gia,t.ql_nhan_xet,t.hoan_thanh_luc?fmtFull(String(t.hoan_thanh_luc).slice(0,10)):""]));
-  const wb=XLSX.utils.book_new();const w1=XLSX.utils.aoa_to_sheet(sum);w1["!cols"]=[{wch:10},{wch:26},{wch:20},...Array(14).fill({wch:11})];
-  const w2=XLSX.utils.aoa_to_sheet(det);w2["!cols"]=[{wch:9},{wch:10},{wch:24},{wch:10},{wch:16},{wch:36},{wch:11},{wch:11},{wch:11},{wch:30},{wch:10},{wch:13},{wch:36},{wch:9},{wch:9},{wch:30},{wch:13}];
-  XLSX.utils.book_append_sheet(wb,w1,"Tong hop");XLSX.utils.book_append_sheet(wb,w2,"Chi tiet cong viec");
-  if(!S.rcM){const Y=S.rcY,months=Array.from({length:12},(_,i)=>`${Y}-${pad(i+1)}`);const mm=[["Nhân viên",...months.map(m=>"T"+(+m.slice(5))),"Cả năm"]];
-    for(const [k,list] of byNv){mm.push([(nvByMa(list[0].ma_nv)||{ten:list[0].ma_nv}).ten,...months.map(m=>{const a=cvAgg(list.filter(t=>t.thang===m));return a.tong?r1(a.rate*100):null;}),r1(cvAgg(list).rate*100)]);}
+  const r1x=x=>x==null?null:Math.round(x*10)/10;
+  const sum=[["BÁO CÁO CÔNG VIỆC THEO PHÒNG BAN: "+F.label],[],["Phòng ban","Tổng","Cố định","Kế hoạch","Phát sinh","Hoàn thành","Đang làm","Quá hạn","Chưa hoàn thành","Tỷ lệ HT (%)","KH đã xong","KH được giao","Đúng hạn (%)","Đánh giá TB (%)"]];
+  const groups=S.pb.map(p=>({p,ts:ts.filter(t=>taskPb(t)===p.id)})).filter(x=>x.ts.length);
+  for(const {p,ts:list} of groups){const a=cvAgg(list);sum.push([p.ten,a.tong,a.co_dinh,a.ke_hoach,a.phat_sinh,a.xong,a.dang,a.qua_han,a.chuaHT,a.rate==null?null:r1x(a.rate*100),a.khXong,a.kh,a.dhRate==null?null:r1x(a.dhRate*100),r1x(a.qlTB)]);}
+  const det=[["Tháng","Phòng ban","Loại","Nhóm","Công việc","Bắt đầu","Hạn","Hạn gốc","Kết quả mong muốn","Tiến độ (%)","Trạng thái","Kết quả thực hiện","Đánh giá (%)","Nhận xét","Hoàn thành lúc"]];
+  ts.forEach(t=>det.push([t.thang,pbName(taskPb(t)),(CV_LOAI[t.loai]||[""])[0],nhomName(t.nhom),t.ten,t.bat_dau?fmtFull(t.bat_dau):"",t.han?fmtFull(t.han):"",
+    t.ke_hoach_goc&&t.ke_hoach_goc.han?fmtFull(t.ke_hoach_goc.han):"",t.ket_qua_mong_muon,+t.tien_do||0,CV_ST[cvStatus(t)][0],t.ket_qua,t.ql_danh_gia,t.ql_nhan_xet,t.hoan_thanh_luc?fmtFull(String(t.hoan_thanh_luc).slice(0,10)):""]));
+  const wb=XLSX.utils.book_new();const w1=XLSX.utils.aoa_to_sheet(sum);w1["!cols"]=[{wch:26},...Array(13).fill({wch:11})];
+  const w2=XLSX.utils.aoa_to_sheet(det);w2["!cols"]=[{wch:9},{wch:22},{wch:10},{wch:16},{wch:36},{wch:11},{wch:11},{wch:11},{wch:30},{wch:10},{wch:13},{wch:36},{wch:10},{wch:30},{wch:13}];
+  XLSX.utils.book_append_sheet(wb,w1,"Tong hop phong ban");XLSX.utils.book_append_sheet(wb,w2,"Chi tiet cong viec");
+  if(!S.rcM){const Y=S.rcY,months=Array.from({length:12},(_,i)=>`${Y}-${pad(i+1)}`);const mm=[["Phòng ban",...months.map(m=>"T"+(+m.slice(5))),"Cả năm"]];
+    for(const {p,ts:list} of groups)mm.push([p.ten,...months.map(m=>{const a=cvAgg(list.filter(t=>t.thang===m));return a.tong?r1x(a.rate*100):null;}),r1x(cvAgg(list).rate*100)]);
     const w3=XLSX.utils.aoa_to_sheet(mm);w3["!cols"]=[{wch:26},...Array(13).fill({wch:8})];XLSX.utils.book_append_sheet(wb,w3,"Theo thang (%)");}
   saveFile(`Bao_cao_cong_viec_${S.rcY}${S.rcM?"_"+S.rcM:""}.xlsx`,XLSX.write(wb,{bookType:"xlsx",type:"array"}),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");}
 
@@ -1615,7 +1619,7 @@ function viewCvCatalog(tab){
       h("p",{class:"hint",style:"margin-top:10px"},"Ví dụ: Hỗ trợ khách hàng, Báo cáo, Đào tạo, Dự án, Hành chính. Nhóm dùng để lọc báo cáo công việc.")));}
   else{
     out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Việc cố định hằng tháng"),ro?null:h("button",{class:"ghost",type:"button",onclick:()=>{C.mau.push({id:uid2(),ten:"",nhom:"",han_ngay:null,kq:"",mo_ta:"",ap_pb:[],ap_nv:[],tat:false});mk();render();}},"＋ Thêm việc cố định")),
-      h("p",{class:"hint"},"Đầu mỗi tháng, Quản lý hoặc Admin bấm “⚙ Tạo việc cố định” ở mục Công việc tháng, web sẽ tạo các việc dưới đây cho đúng người. Áp dụng cho phòng ban nào thì mọi người trong phòng đó đều nhận; có thể thêm Mã NV riêng lẻ. Không chọn gì nghĩa là áp dụng cho tất cả."),
+      h("p",{class:"hint"},"Đầu mỗi tháng, Admin hoặc Quản lý bấm “⚙ Việc cố định” ở mục Công việc tháng, web sẽ tạo các việc dưới đây cho đúng phòng ban. Không chọn phòng nào nghĩa là áp dụng cho tất cả các phòng."),
       h("div",{class:"cvm-list"},C.mau.map((m,i)=>{
         const ng=h("select",{disabled:ro,onchange:e=>{m.nhom=e.target.value;mk();}},h("option",{value:""},"(nhóm)"),C.nhom.map(g=>h("option",{value:g.id},g.ten||"(chưa đặt tên)")));ng.value=m.nhom||"";
         return h("div",{class:"cvm-item"+(m.tat?" off":"")},
@@ -1626,8 +1630,7 @@ function viewCvCatalog(tab){
             h("label",{class:"field wide"},"Kết quả mong muốn",h("input",{type:"text",value:m.kq||"",disabled:ro,oninput:e=>{m.kq=e.target.value;mk();}})),
             h("div",{class:"field wide"},"Áp dụng cho phòng ban",h("div",{class:"dv-chips"},S.pb.map(p=>{const on=m.ap_pb.includes(p.id);
               return h("button",{type:"button",class:"dv-chip"+(on?" on":""),disabled:ro,"aria-pressed":String(on),onclick:()=>{m.ap_pb=on?m.ap_pb.filter(x=>x!==p.id):[...m.ap_pb,p.id];mk();render();}},p.ten);}))),
-            h("label",{class:"field wide"},"Thêm từng người (Mã NV, cách nhau dấu phẩy)",h("input",{type:"text",value:(m.ap_nv||[]).join(", "),disabled:ro,placeholder:"NS0140, NS0412",
-              oninput:e=>{m.ap_nv=e.target.value.split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);mk();}}))),
+            (m.ap_nv||[]).length?h("div",{class:"field wide small muted"},"Áp dụng thêm cho phòng của: "+m.ap_nv.join(", "),ro?null:h("button",{class:"linkish",type:"button",onclick:()=>{m.ap_nv=[];mk();render();}}," bỏ")):null),
           h("div",{class:"row",style:"margin-top:8px"},h("label",{class:"toggle"},h("input",{type:"checkbox",role:"switch",checked:!m.tat,disabled:ro,onchange:e=>{m.tat=!e.target.checked;mk();render();}}),m.tat?"Đang tạm dừng":"Đang dùng"),
             h("span",{class:"spacer"}),ro?null:h("button",{class:"ghost danger",type:"button",onclick:()=>{C.mau.splice(i,1);mk();render();}},"Xóa")));}),
         !C.mau.length?h("p",{class:"muted"},"Chưa có việc cố định nào."):null)));}
@@ -1658,12 +1661,12 @@ const HELP=[
   ["p","Có 3 vai trò. Quyền được kiểm tra ngay trên máy chủ, nên không ai sửa được dữ liệu ngoài phạm vi của mình."],
   ["table",["Việc","Admin","Quản lý","Nhân viên"],[["Xem báo cáo KPI và công việc","Toàn đội","Toàn đội","Toàn đội"],["Nhập, sửa KPI tháng","Toàn đội","Phòng mình","Của mình"],
    ["Sửa mục tiêu KPI","Toàn đội","Phòng mình","Không"],["Sửa thông tin nhân viên","Toàn đội","Phòng mình (trừ phòng ban, chức vụ)","Không"],
-   ["Kế hoạch, giao việc, đánh giá","Toàn đội","Phòng mình","Cập nhật việc của mình"],["Tài khoản, danh mục, cấu hình, xóa tháng","Có","Không","Không"]]],
+   ["Thêm nhân viên","Mọi phòng","Vào phòng mình","Không"],["Xóa KPI cả tháng","Toàn đội","Phòng mình","Không"],["Lập kế hoạch, giao việc cho phòng","Toàn đội","Phòng mình","Không"],["Cập nhật tiến độ, kết quả công việc","Có","Không","Không"],["Đánh giá công việc của phòng","Toàn đội","Phòng mình","Không"],["Tài khoản, danh mục, cấu hình","Có","Không","Không"]]],
   ["tip","**Quản lý** tự chọn phòng phụ trách trong mục **Tài khoản**. Chưa chọn phòng thì chỉ xem được."]]},
  {id:"giaodien",ic:"🧭",t:"Làm quen giao diện",r:ALL,b:[
   ["ul",["**Menu trái** (điện thoại: thanh dưới đáy) dẫn tới các mục. Nút xanh **＋ Nhập KPI tháng này** luôn ở trên cùng.",
    "**Lời chào** đổi theo buổi sáng, trưa, chiều, tối. Đúng ngày sinh nhật của ai, đầu trang có lời chúc 🎂.",
-   "Nút **❄ / ☀ / 🌧** ở góc trên: chọn hiệu ứng nền **Tự động theo thời tiết**, Tuyết, Nắng, Mưa hoặc Tắt.",
+   "Ô **thời tiết** ở góc trên (ví dụ ☁️ Hà Nội 24°C) tự cập nhật mỗi 30 phút theo khu vực của bạn (mặc định Hà Nội).","Nút **❄ / ☀ / 🌧** ở góc trên: chọn hiệu ứng nền **Tự động theo thời tiết**, Tuyết, Nắng, Mưa hoặc Tắt.",
    "Chấm xanh **Cập nhật** ở góc dưới menu: web tự làm mới mỗi 30 giây, bấm **Làm mới** để cập nhật ngay."]]]},
  {id:"nhapkpi",ic:"✏️",t:"Nhập KPI tháng",r:ALL,b:[
   ["p","Mỗi người mỗi tháng có 1 dòng: số lượng từng dịch vụ, ngày nghỉ, giờ trực. Web tự tính phần còn lại."],
@@ -1672,7 +1675,7 @@ const HELP=[
   ["h","Nhập tay"],
   ["steps",["Vào **Nhập KPI tháng**, chọn tháng.","Gõ số vào các ô, nhấn **Enter** để sang ô kế tiếp.","Bấm **Lưu tháng** ở thanh dưới cùng."]],
   ["ul",["**Nhân viên** chỉ thấy và nhập dòng của mình.","**Quản lý** mặc định lọc phòng mình; dòng phòng khác bị khóa.","Cột **Mục tiêu** (case/ngày): Quản lý, Admin sửa được; tháng mới tự lấy mục tiêu tháng trước.",
-   "**Công chuẩn tháng** ở góc trên phải: Admin nhập tay rồi bấm Lưu.","Số đang gõ dở được giữ ở **bản nháp** trên máy, lỡ tắt trang vẫn còn.","Khi lưu, web chỉ ghi đúng những ô bạn đã sửa, không ghi đè số người khác."]],
+   "**Công chuẩn tháng** ở góc trên phải: Admin nhập tay rồi bấm Lưu.","**Xóa cả tháng**: Admin xóa toàn đội; Quản lý có nút **Xóa tháng của phòng**, chỉ xóa số liệu phòng mình.","Số đang gõ dở được giữ ở **bản nháp** trên máy, lỡ tắt trang vẫn còn.","Khi lưu, web chỉ ghi đúng những ô bạn đã sửa, không ghi đè số người khác."]],
   ["h","Tải file Excel hoặc dán từ Google Sheets"],
   ["steps",["Chọn **Tải tệp Excel** (hoặc **Dán từ Sheets**), bấm **⬇ Tải file mẫu** nếu cần.","Chọn file, bấm **Đọc tệp**, kiểm tra phần ghép cột.","Bấm **Lưu … dòng**. Cột không ghép thì giữ nguyên số cũ."]],
   ["tip","Mỗi dịch vụ chỉ hiện ở phòng ban phụ trách nó (Admin chọn trong Danh mục → Phòng ban). Ô có dấu “–” là dịch vụ phòng đó không làm."]]},
@@ -1682,28 +1685,30 @@ const HELP=[
    "**Theo dịch vụ:** số lượng từng dịch vụ theo tháng và so sánh giữa các năm."]],
   ["tip","Bật **Chi tiết dịch vụ** trong bảng Tổng hợp để xem số lượng từng dịch vụ của mỗi người."]]},
  {id:"congviec",ic:"✅",t:"Công việc tháng",r:ALL,b:[
-  ["table",["Loại việc","Là gì","Ai tạo"],[["🔵 Cố định","Việc tháng nào cũng có","Web tự tạo từ Danh mục"],["🟢 Kế hoạch","Việc dự kiến, thêm trước khi chốt","Quản lý, Admin"],["🟠 Phát sinh","Việc ngoài kế hoạch, thêm sau khi chốt","Quản lý, Admin, nhân viên"]]],
+  ["p","Công việc được giao cho **cả phòng ban**, không giao từng người. Bên trái là danh sách phòng ban, bấm vào một phòng để xem việc của phòng đó."],
+  ["table",["Loại việc","Là gì","Ai tạo"],[["🔵 Cố định","Việc tháng nào cũng có","Web tự tạo từ Danh mục"],["🟢 Kế hoạch","Việc dự kiến, thêm trước khi chốt","Admin, Quản lý phòng"],["🟠 Phát sinh","Việc ngoài kế hoạch, thêm sau khi chốt","Admin, Quản lý phòng"]]],
+  ["table",["Việc","Ai làm"],[["Lập kế hoạch, thêm việc, chốt kế hoạch","Admin, Quản lý của phòng"],["Cập nhật tiến độ và kết quả","Chỉ Admin"],["Đánh giá (%) và nhận xét","Admin, Quản lý của phòng"],["Xem","Mọi người"]]],
   ["p","Trạng thái tự tính: **Chưa bắt đầu** (0%), **Đang làm**, **Hoàn thành** (100%), **Quá hạn** (qua hạn mà chưa xong)."],
-  ["h","Đầu tháng: lập kế hoạch (Quản lý, Admin)"],
-  ["steps",["Vào **Công việc tháng**, chọn tháng và phòng ban.","Bấm **⚙ Tạo việc cố định cho cả phòng** (bấm lại không bị trùng).","Chọn từng người ở danh sách trái, bấm **＋ Thêm việc**: hạn, kết quả mong muốn, giờ dự kiến.","Bấm **🔒 Chốt kế hoạch**. Web lưu bản gốc để cuối tháng đối chiếu."]],
-  ["h","Trong tháng: cập nhật (Nhân viên)"],
-  ["steps",["Vào **Công việc tháng**, web tự mở đúng tên bạn.","Bấm vào một việc: kéo **Tiến độ**, ghi **Kết quả thực hiện**, điền **Tự đánh giá (%)**, bấm **Lưu**.","Có việc mới ngoài kế hoạch: bấm **＋ Việc phát sinh**."]],
-  ["h","Cuối tháng: đánh giá (Quản lý, Admin)"],
-  ["steps",["Bấm từng việc, điền **Quản lý đánh giá (%)** và **Nhận xét**.","Ở khung **💬 Nhận xét và đánh giá tháng**, viết nhận xét chung và đánh giá cả tháng.","Xem dòng **📋 Kế hoạch so với thực tế**; việc bị đổi hạn sau khi chốt có dòng **“gốc dd/mm”**."]],
+  ["h","Đầu tháng: lập kế hoạch (Admin, Quản lý)"],
+  ["steps",["Vào **Công việc tháng**, chọn tháng và bấm vào phòng ban.","Bấm **⚙ Việc cố định** để tạo việc lặp lại hằng tháng của phòng (Admin có nút tạo cho mọi phòng cùng lúc). Bấm lại không bị trùng.","Bấm **＋ Thêm việc**: tên, hạn, kết quả mong muốn, giờ dự kiến.","Bấm **🔒 Chốt kế hoạch**. Web lưu bản gốc để cuối tháng đối chiếu; việc thêm sau tự thành **Phát sinh**."]],
+  ["h","Trong tháng: cập nhật (Admin)"],
+  ["steps",["Bấm vào một việc, kéo **Tiến độ**, ghi **Kết quả thực hiện**.","Bấm **Lưu**. Đạt 100% là việc **Hoàn thành**, web ghi ngày xong để tính đúng hạn."]],
+  ["h","Cuối tháng: đánh giá (Admin, Quản lý)"],
+  ["steps",["Bấm từng việc, điền **Đánh giá (%)** và **Nhận xét**.","Ở khung **💬 Nhận xét và đánh giá tháng của phòng**, viết nhận xét chung và đánh giá cả tháng.","Xem dòng **📋 Kế hoạch so với thực tế**; việc bị đổi hạn sau khi chốt có dòng **“gốc dd/mm”**."]],
   ["tip","Lỡ chốt sớm thì bấm **🔓 Mở lại kế hoạch**, sửa xong chốt lại. Bản gốc của việc đã chốt trước vẫn được giữ."]]},
  {id:"baocaocv",ic:"📈",t:"Báo cáo công việc",r:ALL,b:[
-  ["p","Lọc theo **năm, tháng (hoặc cả năm), phòng ban, nhân viên, nhóm việc**. Có ô tổng hợp, biểu đồ trạng thái theo người, kế hoạch so với thực tế, bảng theo từng người, bảng so sánh 12 tháng."],
+  ["p","Lọc theo **năm, tháng (hoặc cả năm), phòng ban, nhóm việc**. Có ô tổng hợp, biểu đồ trạng thái theo phòng ban, kế hoạch so với thực tế, bảng theo từng phòng (kèm dòng Toàn đội), bảng so sánh 12 tháng."],
   ["tip","Bấm **⬇ Tải Excel** để có file gồm sheet tổng hợp, chi tiết từng việc và tỷ lệ hoàn thành theo tháng."]]},
  {id:"thongke",ic:"📉",t:"Báo cáo thống kê",r:ALL,b:[
   ["table",["Tab","Xem được gì"],[["Tổng hợp kỳ","Chọn tháng, quý hoặc năm và phòng ban: KPI và công việc của kỳ, so với kỳ trước và cùng kỳ năm trước, xu hướng từng tháng"],
-   ["Hồ sơ nhân viên","Thông tin, thâm niên, KPI 12 tháng so với mục tiêu, số tháng đạt, hạng trong phòng, công việc và đánh giá từng tháng, nhận xét của quản lý"],
+   ["Hồ sơ nhân viên","Thông tin, thâm niên, KPI 12 tháng so với mục tiêu, số tháng đạt, hạng trong phòng, công việc của phòng người đó và nhận xét tháng của phòng"],
    ["So sánh phòng ban","Nhân sự, KPI TB so với mục tiêu, tỷ lệ đạt, công việc, quá hạn, đánh giá của từng phòng trong kỳ đã chọn"],
    ["Nhân sự","Cơ cấu theo chức vụ, khu vực, phòng ban, thâm niên, độ tuổi; bảng phòng ban × chức vụ"]]],
   ["tip","**Hạng trong phòng** xếp theo trung bình cả năm của tỷ lệ TB/ngày so với mục tiêu, nên công bằng giữa người có mục tiêu khác nhau."]]},
  {id:"danhmuc",ic:"🗂️",t:"Danh mục",r:MGR,b:[
-  ["table",["Tab","Nội dung","Ai sửa"],[["Nhân viên","Mã, tên, phòng ban, chức vụ, khu vực, ngày sinh, ngày thử việc, ngày chính thức","Admin; Quản lý sửa phòng mình (trừ mã, phòng ban, chức vụ)"],
+  ["table",["Tab","Nội dung","Ai sửa"],[["Nhân viên","Mã, tên, phòng ban, chức vụ, khu vực, ngày sinh, ngày thử việc, ngày chính thức","Admin; Quản lý thêm người vào phòng mình và sửa thông tin phòng mình (trừ mã, phòng ban, chức vụ của người đã có)"],
    ["Dịch vụ","Mã và tên dịch vụ, thứ tự cột","Admin"],["Phòng ban","Tên, KPI chuẩn, dịch vụ hiển thị","Admin"],["Công chuẩn","Công chuẩn từng tháng và mặc định","Admin"],
-   ["Nhóm CV","Nhóm công việc dùng để lọc báo cáo","Admin"],["Việc cố định","Việc lặp lại hằng tháng, hạn theo ngày, áp dụng cho phòng ban hoặc từng người","Admin"]]],
+   ["Nhóm CV","Nhóm công việc dùng để lọc báo cáo","Admin"],["Việc cố định","Việc lặp lại hằng tháng, hạn theo ngày, áp dụng cho phòng ban","Admin"]]],
   ["ul",["Ngày nhập dạng **dd/mm/yyyy** hoặc bấm biểu tượng lịch để chọn.","**Thâm niên** = Ngày hiện tại − Ngày chính thức.","**Dán nhanh danh sách từ Excel**: thứ tự cột Mã NV, Họ tên, Phòng ban, Chức vụ, Ngày sinh, Ngày thử việc, Ngày chính thức, Khu vực."]],
   ["warn","Danh mục **không tự lưu**. Sửa xong nhớ bấm **Lưu** ở thanh dưới cùng; web sẽ hỏi lại nếu bạn rời trang khi còn thay đổi."]]},
  {id:"taikhoan",ic:"👥",t:"Tài khoản và phân quyền",r:MGR,b:[
@@ -1764,7 +1769,7 @@ function tkLabel(kind,Y,M,Q){return kind==="month"?`Tháng ${+M}/${Y}`:kind==="q
 function tkPrev(months,kind){const st=kind==="month"?1:kind==="quarter"?3:12;return months.map(m=>shiftMonth(m,-st));}
 function tkYoY(months){return months.map(m=>shiftMonth(m,-12));}
 function kpiIn(months,pbId){const set=new Set(months);return [...S.kpi.values()].filter(r=>set.has(r.thang)&&(!pbId||(pbByName(r.pb)||{}).id===pbId));}
-function cvIn(months,pbId){const set=new Set(months);return S.cv.tasks.filter(t=>set.has(t.thang)&&(!pbId||nvPbId(t.ma_nv)===pbId));}
+function cvIn(months,pbId){const set=new Set(months);return S.cv.tasks.filter(t=>set.has(t.thang)&&(!pbId||taskPb(t)===pbId));}
 function tkCvOK(Y){return !cvNeedUpgrade()&&cvReady(Y+"-01",Y+"-12");}
 function tkPeriodBar(){const Y=S.tkY,ys=[...new Set([thisYear,thisYear-1,thisYear-2,Y,...S.kmKeys.map(k=>+k.slice(0,4))])].sort((a,b)=>b-a);
   const ySel=h("select",{"aria-label":"Năm",onchange:e=>{S.tkY=+e.target.value;render();}},ys.map(y=>h("option",{value:String(y)},"Năm "+y)));ySel.value=String(Y);
@@ -1836,7 +1841,7 @@ function tkHoSo(){
   const ratioOf=ma=>{const v=months.map(m=>S.kpi.get(m+"|"+ma)).filter(Boolean).map(calc).filter(c=>c.avg!=null&&c.chuan).map(c=>c.avg/c.chuan);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
   const peers=S.nv.filter(x=>x.pb===n.pb).map(x=>({ma:x.ma,v:ratioOf(x.ma)})).filter(x=>x.v!=null).sort((a,b)=>b.v-a.v);
   const rank=peers.findIndex(x=>fold(x.ma)===fold(n.ma))+1;
-  const cvOk=tkCvOK(Y);const ts=cvOk?S.cv.tasks.filter(t=>t.thang.startsWith(Y+"-")&&fold(t.ma_nv)===fold(n.ma)):[];const C=cvAgg(ts);
+  const cvOk=tkCvOK(Y);const ts=cvOk?S.cv.tasks.filter(t=>t.thang.startsWith(Y+"-")&&taskPb(t)===n.pb):[];const C=cvAgg(ts);
   const age=n.ns?Math.floor((parseISO(todayISO())-parseISO(n.ns))/(365.25*864e5)):null;
   out.append(h("div",{class:"panel tk-profile"},avatar(n.ten),
     h("div",{class:"tkp-main"},h("div",{class:"tkp-name"},n.ten,cvTag(n.ma)),
@@ -1846,15 +1851,15 @@ function tkHoSo(){
   out.append(h("div",{class:"tiles tiles-4"},
     tkTile("KPI TB/ngày cả năm",fmt(A.avg),A.chuan!=null?"Mục tiêu TB "+fmt(A.chuan):"",null),
     tkTile("Số tháng đạt KPI",have.length?`${passN}/${have.length}`:"—",have.length?fmt(passN/have.length*100,0)+"% số tháng":"Chưa có số liệu",null),
-    tkTile("Hoàn thành công việc",cvOk?cvPct(C.rate):"—",cvOk?`${C.xong}/${C.tong} việc, ${C.qua_han} quá hạn`:"",null),
-    tkTile("Đánh giá TB",cvOk&&C.qlTB!=null?fmt(C.qlTB,0)+"%":"—",cvOk?`Tự đánh giá ${C.tuTB==null?"—":fmt(C.tuTB,0)+"%"}`:"",null)));
+    tkTile("Công việc của phòng",cvOk?cvPct(C.rate):"—",cvOk?`${C.xong}/${C.tong} việc xong, ${C.qua_han} quá hạn`:"",null),
+    tkTile("Đánh giá việc của phòng",cvOk&&C.qlTB!=null?fmt(C.qlTB,0)+"%":"—",cvOk?"Trung bình các việc đã chấm":"",null)));
   const b1=h("div",{class:"chartbox",style:"height:280px"},h("canvas",{"aria-label":"KPI 12 tháng"}));
   const b2=h("div",{class:"chartbox",style:"height:280px"},h("canvas",{"aria-label":"Công việc 12 tháng"}));
   out.append(h("div",{class:"two-col"},h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},`KPI 12 tháng, năm ${Y}`)),b1),
-    h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Công việc và đánh giá theo tháng")),cvOk?b2:h("p",{class:"muted"},cvNeedUpgrade()?"Chưa có phân hệ Công việc.":"Đang tải…"))));
-  const per=months.map(m=>{const t=ts.filter(x=>x.thang===m);const a=cvAgg(t);const pl=cvOk?S.cv.plans.get(m+"|"+fold(n.ma)):null;return {m,a,pl};});
+    h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Công việc của phòng và đánh giá theo tháng")),cvOk?b2:h("p",{class:"muted"},cvNeedUpgrade()?"Chưa có phân hệ Công việc.":"Đang tải…"))));
+  const per=months.map(m=>{const t=ts.filter(x=>x.thang===m);const a=cvAgg(t);const pl=cvOk?S.cv.plans.get(planKey(m,n.pb)):null;return {m,a,pl};});
   out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Chi tiết từng tháng")),h("div",{class:"scroll"},h("table",{class:"grid"},
-    h("thead",{},h("tr",{},["Tháng","KPI tháng","Công TT","TB/ngày","Mục tiêu","Kết quả","Việc xong/tổng","Tự ĐG","QL ĐG","ĐG tháng","Nhận xét của quản lý"].map((x,i)=>h("th",{class:i===0||i===10?"l":""},x)))),
+    h("thead",{},h("tr",{},["Tháng","KPI tháng","Công TT","TB/ngày","Mục tiêu","Kết quả","Việc phòng xong/tổng","—","Đánh giá việc","ĐG tháng của phòng","Nhận xét tháng của phòng"].map((x,i)=>h("th",{class:i===0||i===10?"l":""},x)))),
     h("tbody",{},months.map((m,i)=>{const k=kr[i],c=k.c,p=per[i];return h("tr",{},h("td",{class:"l"},h("strong",{},"T"+(+m.slice(5)))),
       h("td",{},c?fmt(c.total,0):"·"),h("td",{},c?fmt(c.tt,1):"·"),h("td",{class:"tb "+(c&&c.pass===true?"ok":c&&c.pass===false?"bad":"")},c?fmt(c.avg):"·"),h("td",{},c?fmt(c.chuan):"·"),
       h("td",{class:"c"},c?kqChip(c):"·"),h("td",{},p.a.tong?`${p.a.xong}/${p.a.tong}`:"·"),h("td",{},p.a.tuTB!=null?fmt(p.a.tuTB,0)+"%":"·"),h("td",{},p.a.qlTB!=null?fmt(p.a.qlTB,0)+"%":"·"),
@@ -2033,16 +2038,22 @@ const KV_GEO={"Hà Nội":[21.03,105.85],"Nam Định":[20.42,106.17],"Đà Nẵ
 function wxDesc(c){return c===0?"trời quang":c===1?"ít mây":c===2?"có mây":c===3?"nhiều mây":c===45||c===48?"sương mù":c>=51&&c<=57?"mưa phùn":c>=61&&c<=67?"có mưa":
   c>=71&&c<=77?"có tuyết":c>=80&&c<=82?"mưa rào":c===85||c===86?"mưa tuyết":c>=95?"có dông":"không rõ";}
 async function loadWeather(){
-  const kv=(S.nv&&myMa()&&(nvByMa(myMa())||{}).kv)||"Nam Định";
-  try{const c=JSON.parse(lsGet("kpi:wx")||"null");if(c&&c.kv===kv&&Date.now()-c.at<30*60e3){S.wx=c;if(FXP==="auto")fxApply(c.fx);return;}}catch(e){}
-  if(S._wxBusy)return;S._wxBusy=true;const [la,lo]=KV_GEO[kv]||KV_GEO["Nam Định"];
+  const kv=(S.nv&&myMa()&&(nvByMa(myMa())||{}).kv)||"Hà Nội";
+  try{const c=JSON.parse(lsGet("kpi:wx")||"null");if(c&&c.kv===kv&&Date.now()-c.at<29*60e3){S.wx=c;wxChip();if(FXP==="auto")fxApply(c.fx);return;}}catch(e){}
+  if(S._wxBusy)return;S._wxBusy=true;const [la,lo]=KV_GEO[kv]||KV_GEO["Hà Nội"];
   try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=weather_code,temperature_2m,is_day&timezone=Asia%2FHo_Chi_Minh`,{cache:"no-store"});
     const j=await r.json();const cur=j.current||{};const code=+cur.weather_code,day=+cur.is_day===1;
     const fx=[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(code)?"rain":((code>=71&&code<=77)||code===85||code===86)?"snow":(code<=2&&day)?"sun":"snow";
     S.wx={kv,code,temp:cur.temperature_2m,day,fx,desc:wxDesc(code),at:Date.now()};lsSet("kpi:wx",JSON.stringify(S.wx));}
   catch(e){const hr=new Date().getHours();S.wx={kv,fx:hr>=7&&hr<16?"sun":"snow",desc:"chưa lấy được thời tiết, đoán theo giờ",at:Date.now()-25*60e3};}
   finally{S._wxBusy=false;}
-  if(FXP==="auto")fxApply(S.wx.fx);}
+  wxChip();if(FXP==="auto")fxApply(S.wx.fx);}
+function wxIcon(w){if(!w||w.code==null||isNaN(w.code))return "🌡️";const c=w.code;return c===0?(w.day?"☀️":"🌙"):c<=2?(w.day?"🌤️":"☁️"):c===3?"☁️":c===45||c===48?"🌫️":c>=95?"⛈️":((c>=71&&c<=77)||c===85||c===86)?"🌨️":"🌧️";}
+function wxChip(){const btn=document.querySelector(".snow-tg");if(!btn||!S.wx)return;let el=document.querySelector(".wx-chip");
+  if(!el){el=h("button",{type:"button",class:"wx-chip","aria-label":"Thời tiết hiện tại",onclick:()=>fxMenu(btn)});btn.before(el);}
+  const t=new Date(S.wx.at||Date.now());
+  el.replaceChildren(h("span",{class:"wx-ic"},wxIcon(S.wx)),h("span",{class:"wx-city"},S.wx.kv),S.wx.temp!=null?h("strong",{},Math.round(S.wx.temp)+"°C"):h("span",{class:"wx-city"},"–"));
+  el.title=`${S.wx.kv}: ${S.wx.desc||""}. Cập nhật lúc ${pad(t.getHours())}:${pad(t.getMinutes())}, tự kiểm tra mỗi 30 phút.`;}
 /* menu chọn hiệu ứng */
 function fxMenu(btn){const old=document.querySelector(".fx-menu");if(old){old.remove();return;}
   const close=()=>{m.remove();document.removeEventListener("mousedown",out,true);document.removeEventListener("keydown",key,true);};
@@ -2061,7 +2072,7 @@ async function init(){
   document.getElementById("cta").addEventListener("click",()=>{S.month=thisMonth();S.ent=null;S.nhapMode="tay";go("nhap");});
   document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>fxMenu(b)));
   setFx(fxPref(),false);
-  setInterval(()=>{if(FXP==="auto")loadWeather();},30*60e3);
+  loadWeather();setInterval(()=>loadWeather(),30*60e3);
   setInterval(()=>{const el=document.getElementById("greet");if(!el)return;const g=greetInfo();
     if(!el.classList.contains("g-"+g.p)||el.querySelector(".g-txt span").textContent!==g.msg){const n=greetEl();if(n)el.replaceWith(n);else el.remove();}},60000);
   render();
