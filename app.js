@@ -1625,7 +1625,7 @@ function greetEl(){const g=greetInfo();if(lsGet("kpi:greet-hide")===g.key)return
 
 /* ---------- bông tuyết ---------- */
 const SNOW={on:false,cv:null,ctx:null,fl:[],raf:0,w:0,h:0,spr:null,dark:false};
-function snowPref(){const v=lsGet("kpi:snow");if(v==="on")return true;if(v==="off")return false;return !matchMedia("(prefers-reduced-motion: reduce)").matches;}
+
 // Hạt tuyết vẽ sẵn thành ảnh nhỏ có quầng sáng, để vẽ nhanh khi có nhiều hạt
 function snowSprites(){SNOW.dark=matchMedia("(prefers-color-scheme: dark)").matches&&document.documentElement.dataset.theme!=="light";
   const cols=SNOW.dark?["255,255,255","225,240,255","200,228,255","190,245,235"]:["120,180,240","90,160,230","110,200,225","170,205,250"];
@@ -1641,9 +1641,6 @@ function newFlake(anyY){const t=Math.random();let f;
   else if(t<.88)f={k:"bokeh",r:7+Math.random()*8,vy:1.1+Math.random()*.8,a:.25+Math.random()*.25};      // đốm sáng to, mờ, ở gần
   else f={k:"star",r:5+Math.random()*6,vy:.6+Math.random()*.6,a:.6+Math.random()*.35,rot:Math.random()*6.28,vr:(Math.random()-.5)*.02}; // bông 6 cánh
   f.x=Math.random()*SNOW.w;f.y=anyY?Math.random()*SNOW.h:-20;f.ph=Math.random()*6.28;f.amp=.3+Math.random()*.9;f.ci=Math.floor(Math.random()*4);return f;}
-function snowSize(){const c=SNOW.cv;if(!c)return;const dpr=Math.min(window.devicePixelRatio||1,1.5);SNOW.w=innerWidth;SNOW.h=innerHeight;
-  c.width=Math.round(SNOW.w*dpr);c.height=Math.round(SNOW.h*dpr);SNOW.ctx.setTransform(dpr,0,0,dpr,0,0);
-  const want=Math.round(Math.min(280,Math.max(70,SNOW.w*SNOW.h/5500)));while(SNOW.fl.length<want)SNOW.fl.push(newFlake(true));SNOW.fl.length=want;}
 function drawFlake(g,f){const S=SNOW.spr;g.globalAlpha=f.a;
   if(f.k==="dot"){const d=f.r*4.2;g.drawImage(S.sharp[f.ci],f.x-d/2,f.y-d/2,d,d);return;}
   if(f.k==="bokeh"){const d=f.r*3;g.drawImage(S.soft[f.ci],f.x-d/2,f.y-d/2,d,d);return;}
@@ -1652,23 +1649,86 @@ function drawFlake(g,f){const S=SNOW.spr;g.globalAlpha=f.a;
   for(let i=0;i<6;i++){const a=i*Math.PI/3,L=f.r,cx=Math.cos(a),sy=Math.sin(a),bx=cx*L*.58,by=sy*L*.58,b=L*.32;
     g.moveTo(0,0);g.lineTo(cx*L,sy*L);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a+.65)*b,by+Math.sin(a+.65)*b);g.moveTo(bx,by);g.lineTo(bx+Math.cos(a-.65)*b,by+Math.sin(a-.65)*b);}
   g.stroke();g.restore();}
-function snowTick(){const g=SNOW.ctx;g.clearRect(0,0,SNOW.w,SNOW.h);
-  for(const f of SNOW.fl){f.y+=f.vy;f.ph+=.01;f.x+=Math.sin(f.ph)*f.amp*.35+.08;if(f.rot!=null)f.rot+=f.vr;
-    if(f.y>SNOW.h+24||f.x<-30||f.x>SNOW.w+30)Object.assign(f,newFlake(false));drawFlake(g,f);}
-  g.globalAlpha=1;SNOW.raf=requestAnimationFrame(snowTick);}
-function setSnow(on,save){SNOW.on=on;if(save)lsSet("kpi:snow",on?"on":"off");
-  if(on&&!SNOW.cv){const c=document.createElement("canvas");c.className="snow";c.setAttribute("aria-hidden","true");document.body.prepend(c);
-    SNOW.cv=c;SNOW.ctx=c.getContext("2d");snowSprites();snowSize();window.addEventListener("resize",snowSize);
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change",snowSprites);}
-  if(SNOW.cv)SNOW.cv.style.display=on?"block":"none";cancelAnimationFrame(SNOW.raf);if(on)SNOW.raf=requestAnimationFrame(snowTick);
-  document.querySelectorAll(".snow-tg").forEach(b=>{b.setAttribute("aria-pressed",String(on));b.title=on?"Tắt tuyết rơi":"Bật tuyết rơi";});}
 
-/* ---------- start ---------- */
+/* ---------- hiệu ứng thời tiết: tuyết, nắng, mưa, tự động ---------- */
+let FXP="off";                      // lựa chọn của người dùng: auto | snow | sun | rain | off
+const FX_ICON={snow:"❄",sun:"☀",rain:"🌧",off:"⦸"};
+const FX_NAME={auto:"Tự động theo thời tiết",snow:"Tuyết rơi",sun:"Nắng ấm",rain:"Mưa rơi",off:"Tắt hiệu ứng"};
+function fxPref(){const v=lsGet("kpi:fx");if(["auto","snow","sun","rain","off"].includes(v))return v;
+  if(lsGet("kpi:snow")==="off")return "off";return matchMedia("(prefers-reduced-motion: reduce)").matches?"off":"auto";}
+function fxCanvas(){if(SNOW.cv)return;const c=document.createElement("canvas");c.className="snow";c.setAttribute("aria-hidden","true");document.body.prepend(c);
+  SNOW.cv=c;SNOW.ctx=c.getContext("2d");snowSprites();fxSize();window.addEventListener("resize",fxSize);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change",snowSprites);}
+function fxSize(){const c=SNOW.cv;if(!c)return;const dpr=Math.min(window.devicePixelRatio||1,1.5);SNOW.w=innerWidth;SNOW.h=innerHeight;
+  c.width=Math.round(SNOW.w*dpr);c.height=Math.round(SNOW.h*dpr);SNOW.ctx.setTransform(dpr,0,0,dpr,0,0);fxInit();}
+function fxInit(){const A=SNOW.w*SNOW.h;
+  if(SNOW.mode==="snow"){const want=Math.round(Math.min(280,Math.max(70,A/5500)));while(SNOW.fl.length<want)SNOW.fl.push(newFlake(true));SNOW.fl.length=want;}
+  if(SNOW.mode==="rain"){const want=Math.round(Math.min(220,Math.max(60,A/6500)));SNOW.drops=SNOW.drops||[];while(SNOW.drops.length<want)SNOW.drops.push(newDrop(true));SNOW.drops.length=want;SNOW.rip=SNOW.rip||[];}
+  if(SNOW.mode==="sun"){const want=Math.round(Math.min(70,Math.max(26,A/22000)));SNOW.motes=SNOW.motes||[];while(SNOW.motes.length<want)SNOW.motes.push(newMote());SNOW.motes.length=want;}}
+/* mưa */
+function newDrop(anyY){return {x:Math.random()*(SNOW.w+200),y:anyY?Math.random()*SNOW.h:-30-Math.random()*200,len:12+Math.random()*18,vy:9+Math.random()*7,a:(SNOW.dark?.22:.34)+Math.random()*.35,w:1+Math.random()*.8};}
+function rainTick(g){const dark=SNOW.dark,col=dark?"185,212,255":"60,120,195",wind=-2.2;g.lineCap="round";
+  for(const d of SNOW.drops){d.y+=d.vy;d.x+=wind;
+    g.strokeStyle=`rgba(${col},${d.a})`;g.lineWidth=d.w;g.beginPath();g.moveTo(d.x,d.y);g.lineTo(d.x-wind*d.len/d.vy*1.6,d.y-d.len);g.stroke();
+    if(d.y>SNOW.h-4){if(Math.random()<.35&&SNOW.rip.length<40)SNOW.rip.push({x:d.x,y:SNOW.h-3-Math.random()*10,r:1,a:.45});Object.assign(d,newDrop(false));}
+    if(d.x<-30)d.x+=SNOW.w+200;}
+  for(let i=SNOW.rip.length-1;i>=0;i--){const r=SNOW.rip[i];r.r+=.55;r.a-=.012;if(r.a<=0){SNOW.rip.splice(i,1);continue;}
+    g.strokeStyle=`rgba(${col},${r.a})`;g.lineWidth=1;g.beginPath();g.ellipse(r.x,r.y,r.r*1.8,r.r*.45,0,0,6.2832);g.stroke();}}
+/* nắng */
+function newMote(){return {x:Math.random()*SNOW.w,y:Math.random()*SNOW.h,r:1+Math.random()*2.6,vx:(Math.random()-.5)*.25,vy:-.08-Math.random()*.25,ph:Math.random()*6.28,sp:.01+Math.random()*.02};}
+function sunTick(g){const W=SNOW.w,H=SNOW.h;
+  if(!SNOW.mote){const mc=document.createElement("canvas");mc.width=mc.height=48;const mg=mc.getContext("2d");const mr=mg.createRadialGradient(24,24,0,24,24,24);
+    mr.addColorStop(0,"rgba(255,240,190,1)");mr.addColorStop(.3,"rgba(255,205,110,.7)");mr.addColorStop(1,"rgba(255,190,80,0)");mg.fillStyle=mr;mg.fillRect(0,0,48,48);SNOW.mote=mc;}
+  for(const m of SNOW.motes){m.x+=m.vx+Math.sin(m.ph)*.15;m.y+=m.vy;m.ph+=m.sp;if(m.y<-10||m.x<-10||m.x>W+10){Object.assign(m,newMote());m.y=H+5;}
+    g.globalAlpha=Math.max(0,.35+.35*Math.sin(m.ph*2));const d=m.r*5;g.drawImage(SNOW.mote,m.x-d/2,m.y-d/2,d,d);}
+  g.globalAlpha=1;}
+function snowTick(){const g=SNOW.ctx;g.clearRect(0,0,SNOW.w,SNOW.h);
+  if(SNOW.mode==="snow"){for(const f of SNOW.fl){f.y+=f.vy;f.ph+=.01;f.x+=Math.sin(f.ph)*f.amp*.35+.08;if(f.rot!=null)f.rot+=f.vr;
+      if(f.y>SNOW.h+24||f.x<-30||f.x>SNOW.w+30)Object.assign(f,newFlake(false));drawFlake(g,f);}g.globalAlpha=1;}
+  else if(SNOW.mode==="rain")rainTick(g);else if(SNOW.mode==="sun")sunTick(g);
+  SNOW.raf=requestAnimationFrame(snowTick);}
+function fxApply(mode){SNOW.mode=mode;const on=mode!=="off";if(on){fxCanvas();fxInit();}
+  let sun=document.querySelector(".fx-sun");if(mode==="sun"&&!sun){sun=h("div",{class:"fx-sun","aria-hidden":"true"},h("div",{class:"fx-rays"}));document.body.prepend(sun);}
+  if(sun)sun.classList.toggle("on",mode==="sun");
+  if(SNOW.cv)SNOW.cv.style.display=on?"block":"none";cancelAnimationFrame(SNOW.raf);if(on)SNOW.raf=requestAnimationFrame(snowTick);
+  document.querySelectorAll(".snow-tg").forEach(b=>{b.textContent=FX_ICON[mode]||"❄";b.dataset.mode=mode;b.setAttribute("aria-pressed",String(on));
+    b.title="Hiệu ứng: "+(FXP==="auto"?"Tự động ("+(FX_NAME[mode]||"")+")":FX_NAME[FXP]);});}
+function setFx(pref,save){FXP=pref;if(save)lsSet("kpi:fx",pref);
+  if(pref==="auto"){fxApply(S.wx&&S.wx.fx?S.wx.fx:"snow");loadWeather();}else fxApply(pref);}
+/* thời tiết thật theo khu vực của người dùng (Open-Meteo, miễn phí, không cần khóa) */
+const KV_GEO={"Hà Nội":[21.03,105.85],"Nam Định":[20.42,106.17],"Đà Nẵng":[16.05,108.22],"Sài Gòn":[10.78,106.70]};
+function wxDesc(c){return c===0?"trời quang":c===1?"ít mây":c===2?"có mây":c===3?"nhiều mây":c===45||c===48?"sương mù":c>=51&&c<=57?"mưa phùn":c>=61&&c<=67?"có mưa":
+  c>=71&&c<=77?"có tuyết":c>=80&&c<=82?"mưa rào":c===85||c===86?"mưa tuyết":c>=95?"có dông":"không rõ";}
+async function loadWeather(){
+  const kv=(S.nv&&myMa()&&(nvByMa(myMa())||{}).kv)||"Nam Định";
+  try{const c=JSON.parse(lsGet("kpi:wx")||"null");if(c&&c.kv===kv&&Date.now()-c.at<30*60e3){S.wx=c;if(FXP==="auto")fxApply(c.fx);return;}}catch(e){}
+  if(S._wxBusy)return;S._wxBusy=true;const [la,lo]=KV_GEO[kv]||KV_GEO["Nam Định"];
+  try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=weather_code,temperature_2m,is_day&timezone=Asia%2FHo_Chi_Minh`,{cache:"no-store"});
+    const j=await r.json();const cur=j.current||{};const code=+cur.weather_code,day=+cur.is_day===1;
+    const fx=[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(code)?"rain":((code>=71&&code<=77)||code===85||code===86)?"snow":(code<=2&&day)?"sun":"snow";
+    S.wx={kv,code,temp:cur.temperature_2m,day,fx,desc:wxDesc(code),at:Date.now()};lsSet("kpi:wx",JSON.stringify(S.wx));}
+  catch(e){const hr=new Date().getHours();S.wx={kv,fx:hr>=7&&hr<16?"sun":"snow",desc:"chưa lấy được thời tiết, đoán theo giờ",at:Date.now()-25*60e3};}
+  finally{S._wxBusy=false;}
+  if(FXP==="auto")fxApply(S.wx.fx);}
+/* menu chọn hiệu ứng */
+function fxMenu(btn){const old=document.querySelector(".fx-menu");if(old){old.remove();return;}
+  const close=()=>{m.remove();document.removeEventListener("mousedown",out,true);document.removeEventListener("keydown",key,true);};
+  const out=e=>{if(!m.contains(e.target)&&e.target!==btn)close();};const key=e=>{if(e.key==="Escape")close();};
+  const wx=S.wx;const sub=wx&&wx.desc?`${wx.kv}${wx.temp!=null?": "+Math.round(wx.temp)+"°C":""}, ${wx.desc}`:"Đang lấy thời tiết…";
+  const opt=(k,ic,lab,s)=>h("button",{type:"button",class:"fx-opt"+(FXP===k?" on":""),role:"menuitemradio","aria-checked":String(FXP===k),onclick:()=>{setFx(k,true);close();toast(k==="off"?"Đã tắt hiệu ứng.":"Hiệu ứng: "+FX_NAME[k]+(k==="auto"&&S.wx?` (${FX_NAME[S.wx.fx]})`:""));}},
+    h("span",{class:"fx-ic"},ic),h("span",{class:"fx-l"},h("strong",{},lab),s?h("span",{},s):null),FXP===k?h("span",{class:"fx-ck"},"✓"):null);
+  const m=h("div",{class:"fx-menu",role:"menu","aria-label":"Chọn hiệu ứng"},h("div",{class:"fx-h"},"Hiệu ứng nền"),
+    opt("auto","✨","Tự động theo thời tiết",sub),opt("snow","❄️","Tuyết rơi"),opt("sun","☀️","Nắng ấm"),opt("rain","🌧️","Mưa rơi"),opt("off","🚫","Tắt hiệu ứng"));
+  document.body.append(m);const r=btn.getBoundingClientRect();m.style.top=(r.bottom+8)+"px";m.style.left=Math.max(8,Math.min(innerWidth-m.offsetWidth-8,r.right-m.offsetWidth))+"px";
+  setTimeout(()=>{document.addEventListener("mousedown",out,true);document.addEventListener("keydown",key,true);},0);
+  if(FXP==="auto"&&!wx)loadWeather().then(()=>{const s=m.querySelector(".fx-opt .fx-l span");if(s&&S.wx)s.textContent=`${S.wx.kv}${S.wx.temp!=null?": "+Math.round(S.wx.temp)+"°C":""}, ${S.wx.desc}`;});}
+
 async function init(){
   const v=(location.hash||"").slice(1);if(VIEWS.some(x=>x[0]===v))S.view=v;
   document.getElementById("cta").addEventListener("click",()=>{S.month=thisMonth();S.ent=null;S.nhapMode="tay";go("nhap");});
-  document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>{setSnow(!SNOW.on,true);toast(SNOW.on?"Đã bật tuyết rơi ❄":"Đã tắt tuyết rơi");}));
-  setSnow(snowPref(),false);
+  document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>fxMenu(b)));
+  setFx(fxPref(),false);
+  setInterval(()=>{if(FXP==="auto")loadWeather();},30*60e3);
   setInterval(()=>{const el=document.getElementById("greet");if(!el)return;const g=greetInfo();
     if(!el.classList.contains("g-"+g.p)||el.querySelector(".g-txt span").textContent!==g.msg){const n=greetEl();if(n)el.replaceWith(n);else el.remove();}},60000);
   render();
@@ -1677,7 +1737,8 @@ async function init(){
   window.addEventListener("beforeunload",e=>{if(dmDirty()||(S.ent&&S.ent.dirty&&!S.ent.saving)){e.preventDefault();e.returnValue="";}});
   try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("kpi:draft2:"))localStorage.removeItem(k);}}catch(e){}
   if(USE_SB){S.mode="remote";loadSess();const r=handleAuthRedirect();if(r==="recovery"||r==="error"){render();return;}
-    await enterApp();if(S.welcome&&!S.gate){toast(S.welcome);S.welcome=null;}return;}
+    await enterApp();if(S.welcome&&!S.gate){toast(S.welcome);S.welcome=null;}
+    if(FXP==="auto"&&S.wx&&myMa()&&(nvByMa(myMa())||{}).kv&&(nvByMa(myMa())||{}).kv!==S.wx.kv){lsDel("kpi:wx");loadWeather();}return;}
   S.status="local";render();
 }
 init();
