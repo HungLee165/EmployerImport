@@ -266,6 +266,11 @@ function errMsg(e){
   if(/chi_quan_ly_danh_gia/.test(raw))return "Chỉ Quản lý phòng hoặc Admin mới đánh giá được.";
   if(/chi_nguoi_duoc_giao_tu_danh_gia/.test(raw))return "Chỉ người được giao việc mới tự đánh giá được.";
   if(/last_admin/.test(raw))return "Phải còn ít nhất 1 Admin, không hạ quyền Admin cuối cùng được.";
+  if(/chi_quan_ly_tu_chon/.test(raw))return "Chỉ tài khoản Quản lý mới tự chọn phòng phụ trách được.";
+  if(/phong_ban_khong_ton_tai/.test(raw))return "Phòng ban này không còn trong Danh mục.";
+  if(/ma_nv_da_gan/.test(raw))return "Mã NV này đã được gắn cho tài khoản khác. Nhờ Admin kiểm tra.";
+  if(/ma_nv_khong_ton_tai/.test(raw))return "Mã NV không có trong Danh mục nhân viên.";
+  if(/function public\.kpi_set_my_scope|kpi_set_my_scope.*does not exist|Could not find the function public\.kpi_set_my_scope/i.test(raw))return "Cơ sở dữ liệu chưa có chức năng này. Admin chạy file quan_ly_tu_chon_phong.sql trong Supabase.";
   if(e&&(e.code==="login_required"||e.code==="session_expired")){setTimeout(()=>{S.gate="login";S.authUI={msg:"Phiên đăng nhập đã hết hạn. Đăng nhập lại nhé."};render();},1500);return "Phiên đăng nhập đã hết hạn.";}
   if(e&&e.code==="blocked")return "Tài khoản chưa được duyệt hoặc đã bị khóa.";
   if(e&&e.code==="khong_co_quyen")return "Tài khoản này chưa được cấp quyền nhập số liệu.";
@@ -1210,6 +1215,7 @@ function viewMore(){
   const items=[["phongban","Theo phòng ban","building","KPI trung bình, so sánh nhân viên"],["dichvu","Theo dịch vụ","layers","KPI từng dịch vụ theo tháng, năm"],
     ["danhmuc","Danh mục","list","Nhân viên, dịch vụ, phòng ban, công việc"],["caidat","Cài đặt","sliders","Tài khoản của tôi, sao lưu"]];
   if(S.authMode&&isAdmin())items.push(["taikhoan","Tài khoản","users","Duyệt và phân quyền"+(S.me&&+S.me.pending?` (${S.me.pending} chờ duyệt)`:"")]);
+  else if(S.authMode&&isMgr())items.push(["taikhoan","Tài khoản","users","Chọn phòng ban phụ trách của bạn"]);
   return h("div",{class:"stack"},
     S.authMode&&S.me?h("div",{class:"panel row"},avatar(S.me.ho_ten||S.me.email),h("div",{style:"min-width:0"},h("strong",{},S.me.ho_ten||S.me.email),h("div",{class:"small muted"},S.me.email+", "+meRoleText())),
       h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:logout},icon("logout"),"Đăng xuất")):null,
@@ -1227,7 +1233,7 @@ function renderNav(){
   const ub=document.getElementById("user-box");
   if(ub)ub.replaceChildren(...(S.authMode&&S.me?[avatar(S.me.ho_ten||S.me.email),h("div",{style:"min-width:0"},h("div",{class:"u-n"},S.me.ho_ten||S.me.email),h("div",{class:"u-r"},meRoleText())),
     h("button",{class:"u-out",type:"button",title:"Đăng xuất","aria-label":"Đăng xuất",onclick:logout},icon("logout"))]:[]));
-  document.getElementById("nav").replaceChildren(...VIEWS.filter(v=>v[0]!=="them"&&(v[0]!=="taikhoan"||(S.authMode&&isAdmin()))).map(([k,l,ic])=>
+  document.getElementById("nav").replaceChildren(...VIEWS.filter(v=>v[0]!=="them"&&(v[0]!=="taikhoan"||(S.authMode&&(isAdmin()||isMgr())))).map(([k,l,ic])=>
     h("button",{type:"button",class:"nv","aria-current":S.view===k?"page":null,onclick:()=>go(k)},icon(ic),h("span",{class:"lb"},l),badge(k))));
   const tb=document.getElementById("tabbar");
   if(tb)tb.replaceChildren(...TABS.map(([k,l,ic])=>h("button",{type:"button",class:"tb"+(k==="nhap"?" tb-main":""),
@@ -1267,7 +1273,37 @@ function emptyState(){return h("div",{class:"panel empty"},h("div",{class:"logo"
 /* =====================================================================
    TÀI KHOẢN (chỉ Admin): vai trò, gắn Mã NV, phòng ban phụ trách
    ===================================================================== */
+function viewMyScope(){
+  const d={pb:myPbId(),ma:myMa()};const out=h("div",{class:"stack"});
+  const nvSel=h("select",{"aria-label":"Mã NV của bạn",onchange:e=>{d.ma=e.target.value;}});
+  const fillNv=()=>{nvSel.replaceChildren(h("option",{value:""},"(chưa gắn)"),...S.nv.filter(n=>!d.pb||n.pb===d.pb||isMe(n.ma)).map(n=>h("option",{value:n.ma},`${n.ma}, ${n.ten}`)));nvSel.value=d.ma||"";};
+  const pbSel=h("select",{"aria-label":"Phòng ban phụ trách",onchange:e=>{d.pb=e.target.value;fillNv();}},h("option",{value:""},"(chưa chọn)"),S.pb.map(p=>h("option",{value:p.id},p.ten)));pbSel.value=d.pb||"";fillNv();
+  const save=h("button",{class:"btn",type:"button",onclick:async()=>{
+    if(!d.pb){toast("Chọn phòng ban phụ trách trước đã.");return;}
+    if(d.pb!==myPbId()&&myPbId()&&!confirm(`Đổi phòng phụ trách từ ${pbName(myPbId())} sang ${pbName(d.pb)}? Lần đổi này sẽ được ghi lại.`))return;
+    save.disabled=true;save.textContent="Đang lưu…";
+    try{await sbRpc("kpi_set_my_scope",{p_pb_id:d.pb,p_ma_nv:d.ma||""});S.entPb=undefined;S.cvPb=undefined;S.dmPb=undefined;S.ent=null;
+      await enterApp();toast(`Đã chọn phụ trách ${pbName(d.pb)}.`);}
+    catch(e){toast(errMsg(e));save.disabled=false;save.textContent="Lưu";}}},"Lưu");
+  out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Phạm vi quản lý của bạn"),h("span",{class:"chip ok"},meRoleText())),
+    h("p",{class:"hint"},"Chọn phòng ban bạn phụ trách. Bạn sẽ sửa được KPI, mục tiêu, thông tin nhân viên và công việc của phòng này; các phòng khác chỉ xem."),
+    h("div",{class:"row",style:"margin-top:12px;gap:16px;align-items:flex-end"},h("label",{class:"field"},"Phòng ban phụ trách",pbSel),h("label",{class:"field"},"Bạn là nhân viên nào (Mã NV)",nvSel),save),
+    h("p",{class:"small muted",style:"margin-top:12px"},"🛡️ Mỗi lần đổi phòng phụ trách hoặc Mã NV đều được ghi lại, Admin xem được lịch sử. Muốn đổi vai trò hay cấp quyền cho người khác, liên hệ Admin.")));
+  return out;}
+function memberLogPanel(){
+  if(!S.memLog&&!S.memLogLoading){S.memLogLoading=true;sbRpc("kpi_member_log",{p_limit:60}).then(l=>{S.memLog=l||[];}).catch(e=>{S.memLog=[];S.memLogErr=errMsg(e);})
+    .finally(()=>{S.memLogLoading=false;if(S.view==="taikhoan")render();});}
+  const F={vai_tro:"Vai trò",pb_id:"Phòng phụ trách",ma_nv:"Mã NV"};
+  const val=(f,v)=>v==null||v===""?"(trống)":f==="vai_tro"?roleLabel(v):f==="pb_id"?(pbName(v)||v):v;
+  return h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"🛡️ Nhật ký đổi quyền"),h("span",{class:"small muted"},"60 lần gần nhất")),
+    S.memLogErr?h("p",{class:"small muted"},S.memLogErr):!S.memLog?h("p",{class:"muted"},"Đang tải…"):!S.memLog.length?h("p",{class:"muted"},"Chưa có thay đổi nào."):
+    h("div",{class:"scroll"},h("table",{class:"grid dm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Thời gian"),h("th",{class:"l"},"Người đổi"),h("th",{class:"l"},"Tài khoản"),h("th",{class:"l"},"Thay đổi"))),
+      h("tbody",{},S.memLog.map(x=>{const t=new Date(x.luc);const self=(x.boi||"")&&S.members&&S.members.some(m=>m.email===x.email&&(m.ho_ten||m.email)===x.boi);
+        return h("tr",{},h("td",{class:"l small"},t.toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"})),
+          h("td",{class:"l"},x.boi,self?h("span",{class:"tag"},"tự đổi"):null),h("td",{class:"l small muted"},x.email),
+          h("td",{class:"l"},h("strong",{},F[x.truong]||x.truong),": ",val(x.truong,x.cu)," → ",h("strong",{},val(x.truong,x.moi))));})))));}
 function viewAccounts(){
+  if(S.authMode&&isMgr())return viewMyScope();
   if(!S.authMode||!isAdmin())return h("p",{class:"banner"},"Chỉ Admin mới xem được mục này.");
   if(!S.members&&!S.membersLoading){S.membersLoading=true;S.membersErr="";
     sbRpc("kpi_list_members",{}).then(l=>{S.members=(l||[]).map(m=>({...m,_d:{vai_tro:m.vai_tro,ho_ten:m.ho_ten||"",ma_nv:m.ma_nv||"",pb_id:m.pb_id||""}}));})
@@ -1279,7 +1315,7 @@ function viewAccounts(){
         ["Sửa mục tiêu KPI","Toàn đội","Phòng mình","–"],["Sửa thông tin nhân viên","Toàn đội","Phòng mình (trừ phòng ban, chức vụ)","–"],
         ["Kế hoạch, giao việc, đánh giá","Toàn đội","Phòng mình","Cập nhật việc của mình"],["Tài khoản, danh mục, cấu hình, xóa tháng","✅","–","–"]]
         .map(r=>h("tr",{},r.map((c,i)=>h("td",{class:i?"c":"l"},c))))))),
-    h("p",{class:"hint",style:"margin-top:10px"},"Mỗi tài khoản cần gắn đúng Mã NV. Quản lý cần chọn phòng ban phụ trách, chưa chọn thì chỉ xem được. Người mới đăng ký hiện ở dòng màu vàng.")));
+    h("p",{class:"hint",style:"margin-top:10px"},"Mỗi tài khoản cần gắn đúng Mã NV. Quản lý tự chọn được phòng phụ trách của mình (mục Tài khoản), Admin cũng có thể chọn giúp ở bảng dưới. Mọi lần đổi đều ghi vào Nhật ký đổi quyền cuối trang. Người mới đăng ký hiện ở dòng màu vàng.")));
   if(S.membersErr)out.append(h("p",{class:"banner"},S.membersErr));
   if(!S.members){out.append(h("p",{class:"muted"},"Đang tải danh sách…"));return out;}
   const used=new Map(S.members.filter(m=>m.ma_nv).map(m=>[fold(m.ma_nv),m.id]));
@@ -1290,7 +1326,7 @@ function viewAccounts(){
       const patch={};for(const k of ["vai_tro","ho_ten","ma_nv","pb_id"])if((d[k]||"")!==((m[k]??"")||""))patch[k]=d[k];
       if(patch.ma_nv&&used.has(fold(patch.ma_nv))&&used.get(fold(patch.ma_nv))!==m.id){toast(`Mã NV ${patch.ma_nv} đã gắn cho tài khoản khác.`);return;}
       save.disabled=true;save.textContent="Đang lưu…";
-      try{await sbRpc("kpi_set_member2",{p_user:m.id,p_patch:patch});toast(`Đã lưu ${d.ho_ten||m.email}.`);S.members=null;
+      try{await sbRpc("kpi_set_member2",{p_user:m.id,p_patch:patch});toast(`Đã lưu ${d.ho_ten||m.email}.`);S.members=null;S.memLog=null;
         if(m.la_toi){await enterApp();return;}refreshRemote(true).then(()=>renderNav());render();}
       catch(e){toast(errMsg(e));save.disabled=false;save.textContent="Lưu";}}},"Lưu");
     const upd=()=>{save.disabled=["vai_tro","ho_ten","ma_nv","pb_id"].every(k=>(d[k]||"")===((m[k]??"")||""));pbSel.disabled=d.vai_tro!=="quan_ly";};
@@ -1308,6 +1344,7 @@ function viewAccounts(){
       h("td",{},save)));});
   out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Tài khoản"),h("span",{class:"small muted"},`${S.members.length} tài khoản`)),
     h("div",{class:"scroll"},h("table",{class:"grid acc-tbl dm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Tài khoản"),h("th",{class:"l"},"Vai trò"),h("th",{class:"l"},"Nhân viên (Mã NV)"),h("th",{class:"l"},"Phòng ban phụ trách"),h("th",{}))),tb))));
+  out.append(memberLogPanel());
   return out;}
 
 /* =====================================================================
