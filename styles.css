@@ -816,3 +816,14 @@ body{background:
 .wx-chip .wx-city{color:var(--muted)}
 .wx-chip+.snow-tg{margin-left:8px}
 @media (max-width:640px){.wx-chip{height:34px;padding:0 8px}.wx-chip .wx-city{display:none}}
+/* ===== hiệu ứng mới ===== */
+.fx-sun.soft::before{opacity:.6}
+.fx-sun.soft .fx-rays{opacity:.45}
+.fx-dim{position:fixed;inset:0;pointer-events:none;z-index:14;display:none;background:linear-gradient(180deg,rgba(18,26,44,.14),rgba(18,26,44,.04) 45%,rgba(18,26,44,0) 70%)}
+.fx-dim.on{display:block}
+.fx-menu{width:440px}
+.fx-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.fx-grid .fx-opt.wide{grid-column:1/-1}
+@media (max-width:640px){.fx-menu{width:min(360px,calc(100vw - 16px))}}
+.snow-tg[data-mode="night"]{color:#5B6CD6} .snow-tg[data-mode="storm"]{color:#475569} .snow-tg[data-mode="fog"],.snow-tg[data-mode="cloud"]{color:#64748B}
+.snow-tg[data-mode="partly"]{color:#E59A00} .snow-tg[data-mode="drizzle"]{color:#2F7BD6}
