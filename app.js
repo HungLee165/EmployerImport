@@ -1,6 +1,6 @@
 (function(){
 "use strict";
-const VIEWS=[["tonghop","Tổng hợp KPI","dash"],["phongban","Theo phòng ban","building"],["dichvu","Theo dịch vụ","layers"],["nhap","Nhập KPI tháng","plus"],["congviec","Công việc tháng","check"],["baocaocv","Báo cáo công việc","pie"],["danhmuc","Danh mục","list"],["caidat","Cài đặt","sliders"],["taikhoan","Tài khoản","users"],["them","Thêm","more"]];
+const VIEWS=[["tonghop","Tổng hợp KPI","dash"],["phongban","Theo phòng ban","building"],["dichvu","Theo dịch vụ","layers"],["nhap","Nhập KPI tháng","plus"],["congviec","Công việc tháng","check"],["baocaocv","Báo cáo công việc","pie"],["danhmuc","Danh mục","list"],["caidat","Cài đặt","sliders"],["taikhoan","Tài khoản","users"],["huongdan","Hướng dẫn","book"],["them","Thêm","more"]];
 const TABS=[["tonghop","Tổng hợp","dash"],["congviec","Công việc","check"],["nhap","Nhập","plus"],["baocaocv","Báo cáo","pie"],["them","Thêm","more"]];
 const ICONS={
   dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -13,6 +13,7 @@ const ICONS={
   users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
   building:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
+  book:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/>',
   check:'<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
   pie:'<path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
   layers:'<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
@@ -1216,6 +1217,7 @@ function viewMore(){
     ["danhmuc","Danh mục","list","Nhân viên, dịch vụ, phòng ban, công việc"],["caidat","Cài đặt","sliders","Tài khoản của tôi, sao lưu"]];
   if(S.authMode&&isAdmin())items.push(["taikhoan","Tài khoản","users","Duyệt và phân quyền"+(S.me&&+S.me.pending?` (${S.me.pending} chờ duyệt)`:"")]);
   else if(S.authMode&&isMgr())items.push(["taikhoan","Tài khoản","users","Chọn phòng ban phụ trách của bạn"]);
+  items.push(["huongdan","Hướng dẫn sử dụng","book","Cách dùng từng chức năng, câu hỏi thường gặp"]);
   return h("div",{class:"stack"},
     S.authMode&&S.me?h("div",{class:"panel row"},avatar(S.me.ho_ten||S.me.email),h("div",{style:"min-width:0"},h("strong",{},S.me.ho_ten||S.me.email),h("div",{class:"small muted"},S.me.email+", "+meRoleText())),
       h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:logout},icon("logout"),"Đăng xuất")):null,
@@ -1237,7 +1239,7 @@ function renderNav(){
     h("button",{type:"button",class:"nv","aria-current":S.view===k?"page":null,onclick:()=>go(k)},icon(ic),h("span",{class:"lb"},l),badge(k))));
   const tb=document.getElementById("tabbar");
   if(tb)tb.replaceChildren(...TABS.map(([k,l,ic])=>h("button",{type:"button",class:"tb"+(k==="nhap"?" tb-main":""),
-    "aria-current":(S.view===k||(k==="them"&&["danhmuc","caidat","taikhoan","them","phongban","dichvu"].includes(S.view)))?"page":null,onclick:()=>go(k)},icon(ic),h("span",{class:"lb"},l),badge(k))));
+    "aria-current":(S.view===k||(k==="them"&&["danhmuc","caidat","taikhoan","them","phongban","dichvu","huongdan"].includes(S.view)))?"page":null,onclick:()=>go(k)},icon(ic),h("span",{class:"lb"},l),badge(k))));
   const t=document.getElementById("page-title");if(t)t.textContent=TITLES[S.view]||"";
   const e=document.getElementById("eyebrow");if(e)e.textContent=longDate(todayISO());
   document.title=(TITLES[S.view]?TITLES[S.view]+" – ":"")+"EasySupport – Đội Hỗ trợ & CSKH";}
@@ -1252,7 +1254,7 @@ function render(){
   renderNav();destroyCharts();S.after=[];
   const wrap=h("div",{class:"stack"});const b=statusBanner();if(b)wrap.append(b);
   if(S.status==="ready"&&S.authMode!==undefined){const gr=greetEl();if(gr)wrap.append(gr);const bd=bdayEl();if(bd)wrap.append(bd);}
-  if(S.status==="ready"){const fn={tonghop:viewTongHop,phongban:viewPhongBan,dichvu:viewDichVu,nhap:viewNhap,congviec:viewCongViec,baocaocv:viewBaoCaoCV,danhmuc:viewDanhMuc,caidat:viewSettings,taikhoan:viewAccounts,them:viewMore}[S.view]||viewTongHop;wrap.append(fn());}
+  if(S.status==="ready"){const fn={tonghop:viewTongHop,phongban:viewPhongBan,dichvu:viewDichVu,nhap:viewNhap,congviec:viewCongViec,baocaocv:viewBaoCaoCV,danhmuc:viewDanhMuc,caidat:viewSettings,taikhoan:viewAccounts,huongdan:viewHuongDan,them:viewMore}[S.view]||viewTongHop;wrap.append(fn());}
   document.getElementById("main").replaceChildren(wrap);chartDefaults();renderSync();
   S.after.forEach(f=>f());S.after=[];}
 function softRender(){if(S.gate||S.view==="taikhoan"||S.cvModal)return;
@@ -1634,6 +1636,115 @@ function viewCvCatalog(tab){
       if(C.nhom.some(g=>!(g.ten||"").trim())){toast("Mỗi nhóm cần có tên.");return;}if(C.mau.some(m=>!(m.ten||"").trim())){toast("Mỗi việc cố định cần có tên.");return;}
       try{await saveCfg2("cv_nhom",C.nhom.map(g=>({id:g.id,ten:g.ten.trim()})));await saveCfg2("cv_mau",C.mau.map(m=>({...m,ten:m.ten.trim()})));S.dmCv=null;toast("Đã lưu danh mục công việc.");render();}
       catch(e){toast(errMsg(e));}}},"Lưu")));
+  return out;}
+
+
+/* =====================================================================
+   HƯỚNG DẪN SỬ DỤNG (trong web)
+   ===================================================================== */
+const ALL=["admin","quan_ly","nhan_vien"],MGR=["admin","quan_ly"],ADM=["admin"];
+const HELP=[
+ {id:"batdau",ic:"🚀",t:"Bắt đầu sử dụng",r:ALL,b:[
+  ["p","**EasySupport** là web báo cáo KPI tháng và quản lý công việc của **Đội Hỗ trợ & CSKH**. Địa chỉ: **easysupport.io.vn**."],
+  ["h","Tạo tài khoản lần đầu"],
+  ["steps",["Ở màn đăng nhập, bấm **Chưa có tài khoản? Đăng ký**.","Điền họ tên, email, mật khẩu (ít nhất 8 ký tự), bấm **Tạo tài khoản**.","Thấy màn **Đang chờ duyệt** thì nhắn Admin duyệt và gắn Mã NV cho bạn, rồi bấm **Kiểm tra lại**."]],
+  ["h","Quên mật khẩu"],
+  ["steps",["Bấm **Quên mật khẩu?**, nhập email, bấm gửi.","Mở email (xem cả mục Spam), bấm đường link, đặt mật khẩu mới."]],
+  ["h","Cài web như ứng dụng trên điện thoại"],
+  ["ul",["**iPhone (Safari):** bấm nút Chia sẻ, chọn **Thêm vào MH chính**.","**Android (Chrome):** bấm **⋮**, chọn **Thêm vào màn hình chính**."]],
+  ["tip","Web nhớ đăng nhập trên máy của bạn. Dùng máy chung thì nhớ **Đăng xuất** (biểu tượng cửa ra ở góc dưới menu)."]]},
+ {id:"phanquyen",ic:"🛡️",t:"Phân quyền",r:ALL,b:[
+  ["p","Có 3 vai trò. Quyền được kiểm tra ngay trên máy chủ, nên không ai sửa được dữ liệu ngoài phạm vi của mình."],
+  ["table",["Việc","Admin","Quản lý","Nhân viên"],[["Xem báo cáo KPI và công việc","Toàn đội","Toàn đội","Toàn đội"],["Nhập, sửa KPI tháng","Toàn đội","Phòng mình","Của mình"],
+   ["Sửa mục tiêu KPI","Toàn đội","Phòng mình","Không"],["Sửa thông tin nhân viên","Toàn đội","Phòng mình (trừ phòng ban, chức vụ)","Không"],
+   ["Kế hoạch, giao việc, đánh giá","Toàn đội","Phòng mình","Cập nhật việc của mình"],["Tài khoản, danh mục, cấu hình, xóa tháng","Có","Không","Không"]]],
+  ["tip","**Quản lý** tự chọn phòng phụ trách trong mục **Tài khoản**. Chưa chọn phòng thì chỉ xem được."]]},
+ {id:"giaodien",ic:"🧭",t:"Làm quen giao diện",r:ALL,b:[
+  ["ul",["**Menu trái** (điện thoại: thanh dưới đáy) dẫn tới các mục. Nút xanh **＋ Nhập KPI tháng này** luôn ở trên cùng.",
+   "**Lời chào** đổi theo buổi sáng, trưa, chiều, tối. Đúng ngày sinh nhật của ai, đầu trang có lời chúc 🎂.",
+   "Nút **❄ / ☀ / 🌧** ở góc trên: chọn hiệu ứng nền **Tự động theo thời tiết**, Tuyết, Nắng, Mưa hoặc Tắt.",
+   "Chấm xanh **Cập nhật** ở góc dưới menu: web tự làm mới mỗi 30 giây, bấm **Làm mới** để cập nhật ngay."]]]},
+ {id:"nhapkpi",ic:"✏️",t:"Nhập KPI tháng",r:ALL,b:[
+  ["p","Mỗi người mỗi tháng có 1 dòng: số lượng từng dịch vụ, ngày nghỉ, giờ trực. Web tự tính phần còn lại."],
+  ["table",["Chỉ số","Cách tính"],[["KPI tháng","Cộng số lượng các dịch vụ"],["Công thực tế","Công chuẩn tháng − Ngày nghỉ"],["TB/ngày","KPI tháng ÷ Công thực tế"],
+   ["Kết quả","**Đạt** khi TB/ngày ≥ Mục tiêu"],["So tháng trước","KPI tháng này ÷ KPI tháng trước × 100%"]]],
+  ["h","Nhập tay"],
+  ["steps",["Vào **Nhập KPI tháng**, chọn tháng.","Gõ số vào các ô, nhấn **Enter** để sang ô kế tiếp.","Bấm **Lưu tháng** ở thanh dưới cùng."]],
+  ["ul",["**Nhân viên** chỉ thấy và nhập dòng của mình.","**Quản lý** mặc định lọc phòng mình; dòng phòng khác bị khóa.","Cột **Mục tiêu** (case/ngày): Quản lý, Admin sửa được; tháng mới tự lấy mục tiêu tháng trước.",
+   "**Công chuẩn tháng** ở góc trên phải: Admin nhập tay rồi bấm Lưu.","Số đang gõ dở được giữ ở **bản nháp** trên máy, lỡ tắt trang vẫn còn.","Khi lưu, web chỉ ghi đúng những ô bạn đã sửa, không ghi đè số người khác."]],
+  ["h","Tải file Excel hoặc dán từ Google Sheets"],
+  ["steps",["Chọn **Tải tệp Excel** (hoặc **Dán từ Sheets**), bấm **⬇ Tải file mẫu** nếu cần.","Chọn file, bấm **Đọc tệp**, kiểm tra phần ghép cột.","Bấm **Lưu … dòng**. Cột không ghép thì giữ nguyên số cũ."]],
+  ["tip","Mỗi dịch vụ chỉ hiện ở phòng ban phụ trách nó (Admin chọn trong Danh mục → Phòng ban). Ô có dấu “–” là dịch vụ phòng đó không làm."]]},
+ {id:"baocaokpi",ic:"📊",t:"Xem báo cáo KPI",r:ALL,b:[
+  ["ul",["**Tổng hợp KPI:** khung tóm tắt tháng, các ô số liệu, **🏆 Xuất sắc** và **🤝 Cần hỗ trợ** (xếp theo % so với mục tiêu), sinh nhật trong tháng, bảng chi tiết theo phòng ban, nút **⬇ Tải Excel**.",
+   "**Theo phòng ban:** KPI trung bình chung của từng phòng theo tháng, so sánh nhân viên trong phòng, diễn biến từng người.",
+   "**Theo dịch vụ:** số lượng từng dịch vụ theo tháng và so sánh giữa các năm."]],
+  ["tip","Bật **Chi tiết dịch vụ** trong bảng Tổng hợp để xem số lượng từng dịch vụ của mỗi người."]]},
+ {id:"congviec",ic:"✅",t:"Công việc tháng",r:ALL,b:[
+  ["table",["Loại việc","Là gì","Ai tạo"],[["🔵 Cố định","Việc tháng nào cũng có","Web tự tạo từ Danh mục"],["🟢 Kế hoạch","Việc dự kiến, thêm trước khi chốt","Quản lý, Admin"],["🟠 Phát sinh","Việc ngoài kế hoạch, thêm sau khi chốt","Quản lý, Admin, nhân viên"]]],
+  ["p","Trạng thái tự tính: **Chưa bắt đầu** (0%), **Đang làm**, **Hoàn thành** (100%), **Quá hạn** (qua hạn mà chưa xong)."],
+  ["h","Đầu tháng: lập kế hoạch (Quản lý, Admin)"],
+  ["steps",["Vào **Công việc tháng**, chọn tháng và phòng ban.","Bấm **⚙ Tạo việc cố định cho cả phòng** (bấm lại không bị trùng).","Chọn từng người ở danh sách trái, bấm **＋ Thêm việc**: hạn, kết quả mong muốn, giờ dự kiến.","Bấm **🔒 Chốt kế hoạch**. Web lưu bản gốc để cuối tháng đối chiếu."]],
+  ["h","Trong tháng: cập nhật (Nhân viên)"],
+  ["steps",["Vào **Công việc tháng**, web tự mở đúng tên bạn.","Bấm vào một việc: kéo **Tiến độ**, ghi **Kết quả thực hiện**, điền **Tự đánh giá (%)**, bấm **Lưu**.","Có việc mới ngoài kế hoạch: bấm **＋ Việc phát sinh**."]],
+  ["h","Cuối tháng: đánh giá (Quản lý, Admin)"],
+  ["steps",["Bấm từng việc, điền **Quản lý đánh giá (%)** và **Nhận xét**.","Ở khung **💬 Nhận xét và đánh giá tháng**, viết nhận xét chung và đánh giá cả tháng.","Xem dòng **📋 Kế hoạch so với thực tế**; việc bị đổi hạn sau khi chốt có dòng **“gốc dd/mm”**."]],
+  ["tip","Lỡ chốt sớm thì bấm **🔓 Mở lại kế hoạch**, sửa xong chốt lại. Bản gốc của việc đã chốt trước vẫn được giữ."]]},
+ {id:"baocaocv",ic:"📈",t:"Báo cáo công việc",r:ALL,b:[
+  ["p","Lọc theo **năm, tháng (hoặc cả năm), phòng ban, nhân viên, nhóm việc**. Có ô tổng hợp, biểu đồ trạng thái theo người, kế hoạch so với thực tế, bảng theo từng người, bảng so sánh 12 tháng."],
+  ["tip","Bấm **⬇ Tải Excel** để có file gồm sheet tổng hợp, chi tiết từng việc và tỷ lệ hoàn thành theo tháng."]]},
+ {id:"danhmuc",ic:"🗂️",t:"Danh mục",r:MGR,b:[
+  ["table",["Tab","Nội dung","Ai sửa"],[["Nhân viên","Mã, tên, phòng ban, chức vụ, khu vực, ngày sinh, ngày thử việc, ngày chính thức","Admin; Quản lý sửa phòng mình (trừ mã, phòng ban, chức vụ)"],
+   ["Dịch vụ","Mã và tên dịch vụ, thứ tự cột","Admin"],["Phòng ban","Tên, KPI chuẩn, dịch vụ hiển thị","Admin"],["Công chuẩn","Công chuẩn từng tháng và mặc định","Admin"],
+   ["Nhóm CV","Nhóm công việc dùng để lọc báo cáo","Admin"],["Việc cố định","Việc lặp lại hằng tháng, hạn theo ngày, áp dụng cho phòng ban hoặc từng người","Admin"]]],
+  ["ul",["Ngày nhập dạng **dd/mm/yyyy** hoặc bấm biểu tượng lịch để chọn.","**Thâm niên** = Ngày hiện tại − Ngày chính thức.","**Dán nhanh danh sách từ Excel**: thứ tự cột Mã NV, Họ tên, Phòng ban, Chức vụ, Ngày sinh, Ngày thử việc, Ngày chính thức, Khu vực."]],
+  ["warn","Danh mục **không tự lưu**. Sửa xong nhớ bấm **Lưu** ở thanh dưới cùng; web sẽ hỏi lại nếu bạn rời trang khi còn thay đổi."]]},
+ {id:"taikhoan",ic:"👥",t:"Tài khoản và phân quyền",r:MGR,b:[
+  ["h","Admin"],
+  ["steps",["Vào **Tài khoản**. Người mới đăng ký nằm ở dòng màu vàng.","Chọn **Vai trò**, gắn **Mã NV** (có nút **Gợi ý** khi tên trùng), với Quản lý chọn **Phòng ban phụ trách**.","Bấm **Lưu** ở dòng đó."]],
+  ["h","Quản lý"],
+  ["steps",["Vào **Tài khoản**, chọn **Phòng ban phụ trách** và **Mã NV** của bạn.","Bấm **Lưu**. Từ lúc này bạn sửa được dữ liệu của phòng đã chọn."]],
+  ["tip","Mọi lần đổi vai trò, phòng phụ trách, Mã NV đều ghi vào **🛡️ Nhật ký đổi quyền** (Admin xem cuối trang Tài khoản)."]]},
+ {id:"saoluu",ic:"💾",t:"Cài đặt và sao lưu",r:ALL,b:[
+  ["ul",["**Tài khoản của tôi** (mục Cài đặt): đổi tên hiển thị, đổi mật khẩu.","**Tải file sao lưu**: tải toàn bộ danh mục và KPI về file .json, nên làm mỗi tháng một lần.","**Khôi phục từ file** (Admin): những tháng có trong file sẽ ghi đè lên số hiện tại."]]]},
+ {id:"hoidap",ic:"❓",t:"Câu hỏi thường gặp",r:ALL,b:[
+  ["qa","Đăng ký rồi nhưng vẫn thấy “Đang chờ duyệt”?","Nhắn Admin duyệt và gắn Mã NV, rồi bấm **Kiểm tra lại**."],
+  ["qa","Tôi không nhập được KPI, ô bị khóa?","Nhân viên: tài khoản chưa gắn Mã NV, nhờ Admin gắn. Quản lý: chưa chọn phòng phụ trách (mục Tài khoản), hoặc đang xem phòng khác."],
+  ["qa","Số liệu người khác vừa nhập mà tôi chưa thấy?","Bấm **Làm mới** ở góc dưới menu, hoặc nhấn **Ctrl + F5**."],
+  ["qa","Một nhân viên bị tách thành 2 người?","Mã NV hoặc tên bị gõ khác nhau. Sửa lại cho thống nhất trong Danh mục và trong file Excel."],
+  ["qa","Kết quả Đạt/Không đạt tính theo mục tiêu nào?","Theo cột **Mục tiêu** của chính người đó trong tháng. Đổi KPI chuẩn phòng ban chỉ áp dụng cho tháng mới, trừ khi Admin bấm **Áp dụng KPI chuẩn mới cho số liệu đã lưu**."],
+  ["qa","Hiệu ứng tuyết, nắng, mưa làm rối mắt?","Bấm nút ❄ / ☀ / 🌧 ở góc trên, chọn **Tắt hiệu ứng**."],
+  ["qa","Web báo “Không tải được dữ liệu”?","Kiểm tra mạng rồi tải lại trang. Nếu vẫn lỗi, báo Admin kiểm tra hệ thống."]]}
+];
+function mdText(t){return String(t).split(/(\*\*[^*]+\*\*)/).filter(Boolean).map(s=>s.startsWith("**")?h("strong",{},s.slice(2,-2)):s);}
+function helpText(sec){return [sec.t,...sec.b.flat(3)].join(" ");}
+function viewHuongDan(){
+  const out=h("div",{class:"stack"});const q=fold(S.hdQ||"");const role=S.me?S.me.vai_tro:"";
+  const secs=HELP.filter(s=>!q||fold(helpText(s)).includes(q));
+  const roleName={admin:"Admin",quan_ly:"Quản lý",nhan_vien:"Nhân viên"};
+  const head=h("div",{class:"panel hd-hero"},h("div",{},h("h2",{},"📖 Hướng dẫn sử dụng EasySupport"),
+      h("p",{class:"muted"},role&&roleName[role]?`Bạn đang dùng tài khoản ${roleName[role]}. Các mục dành cho bạn có nhãn “Dành cho bạn”.`:"Chọn một mục ở mục lục, hoặc gõ từ khóa để tìm.")),
+    h("input",{type:"search",placeholder:"Tìm trong hướng dẫn… (ví dụ: mục tiêu, chốt kế hoạch)","aria-label":"Tìm trong hướng dẫn",value:S.hdQ||"",class:"hd-search",
+      oninput:e=>{S.hdQ=e.target.value;clearTimeout(S._hq);S._hq=setTimeout(()=>{render();const i=document.querySelector(".hd-search");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250);}}));
+  out.append(head);
+  const toc=h("nav",{class:"panel hd-toc","aria-label":"Mục lục"},h("div",{class:"hd-toc-h"},"Mục lục"),HELP.map(s=>h("a",{href:"#hd-"+s.id,class:"hd-link"+(secs.includes(s)?"":" dim"),
+    onclick:e=>{e.preventDefault();const el=document.getElementById("hd-"+s.id);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});}},h("span",{},s.ic),h("span",{},s.t))));
+  const body=h("div",{class:"hd-body stack"});
+  if(!secs.length)body.append(h("div",{class:"panel empty"},h("p",{class:"muted"},"Không tìm thấy nội dung phù hợp. Thử từ khóa khác.")));
+  for(const s of secs){
+    const forMe=s.r.includes(role);
+    const card=h("section",{class:"panel hd-sec",id:"hd-"+s.id},h("div",{class:"hd-sec-h"},h("h3",{},s.ic+" "+s.t),
+      h("div",{class:"hd-roles"},forMe&&s.r.length<3?h("span",{class:"chip ok"},"Dành cho bạn"):null,s.r.length<3?h("span",{class:"small muted"},"Dành cho: "+s.r.map(r=>roleName[r]).join(", ")):null)));
+    for(const [k,a,c] of s.b){
+      if(k==="p")card.append(h("p",{},mdText(a)));
+      else if(k==="h")card.append(h("h4",{},a));
+      else if(k==="steps")card.append(h("ol",{class:"hd-steps"},a.map(x=>h("li",{},mdText(x)))));
+      else if(k==="ul")card.append(h("ul",{class:"hd-ul"},a.map(x=>h("li",{},mdText(x)))));
+      else if(k==="tip"||k==="warn")card.append(h("div",{class:"hd-note "+k},h("span",{},k==="tip"?"💡":"⚠️"),h("div",{},mdText(a))));
+      else if(k==="table")card.append(h("div",{class:"scroll"},h("table",{class:"grid hd-tbl"},h("thead",{},h("tr",{},a.map(x=>h("th",{class:"l"},x)))),h("tbody",{},c.map(r=>h("tr",{},r.map(x=>h("td",{class:"l"},mdText(x)))))))));
+      else if(k==="qa")card.append(h("details",{class:"hd-qa",open:!!q},h("summary",{},a),h("p",{},mdText(c))));}
+    body.append(card);}
+  out.append(h("div",{class:"hd-layout"},toc,body));
   return out;}
 
 /* ---------- lời chào theo buổi ---------- */
