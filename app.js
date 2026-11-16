@@ -95,7 +95,9 @@ const CFG=window.KPI_CONFIG||{};
 const API=String(CFG.apiUrl||"").trim();
 const SB_URL=String(CFG.supabaseUrl||"").trim().replace(/\/+$/,"");
 const SB_KEY=String(CFG.supabaseKey||CFG.supabaseAnonKey||"").trim();
-const USE_SB=!!(SB_URL&&SB_KEY);
+const CF_URL=String(CFG.apiUrl||"").trim().replace(/\/+$/,"");
+const USE_CF=!!CF_URL;                       // máy chủ Cloudflare (Workers + D1), đăng nhập Google
+const USE_SB=USE_CF||!!(SB_URL&&SB_KEY);
 
 /* ---------- Đăng nhập (Supabase Auth) ---------- */
 const AUTH={sess:null,refreshing:null};
@@ -131,8 +133,24 @@ function authMsg(e){const m=String((e&&e.message)||"");
   if(e&&e.code==="session_expired")return "Phiên đăng nhập đã hết hạn. Đăng nhập lại nhé.";
   return "Có lỗi: "+(m||"không rõ")+".";}
 
+/* ---------- Cloudflare ---------- */
+async function cfFetch(path,opts={}){
+  const tok=AUTH.sess&&AUTH.sess.access_token;const headers={"Content-Type":"application/json"};if(tok)headers.Authorization="Bearer "+tok;
+  const url=path.startsWith("/rest/v1/rpc/")?CF_URL+"/rpc/"+path.slice(13):path.startsWith("/rest/v1/kpi_config")?CF_URL+"/version":CF_URL+path;
+  let res;try{res=await fetch(url,{method:opts.method||(opts.body?"POST":"GET"),headers,body:opts.body,cache:"no-store"});}catch(e){throw {code:"network"};}
+  const txt=await res.text();let body=null;try{body=txt?JSON.parse(txt):null;}catch(e){}
+  if(!res.ok){const msg=(body&&(body.message||body.code))||("HTTP "+res.status);
+    if(res.status===401){saveSess(null);throw {code:tok?"session_expired":"login_required"};}
+    if(["login_required","khong_co_quyen","chi_quan_ly","last_admin"].includes(msg))throw {code:msg,message:msg};
+    throw {code:"server",message:msg};}
+  return body;}
+function cfLoginURL(){return CF_URL+"/auth/google/start?return="+encodeURIComponent(siteURL());}
+function cfErr(c){return c==="het_han"?"Phiên đăng nhập Google đã quá hạn, thử lại nhé.":c==="sai_ten_mien"?"Email này không thuộc tên miền được phép đăng nhập.":
+  c==="access_denied"?"Bạn đã hủy đăng nhập Google.":"Đăng nhập Google chưa thành công ("+c+"). Thử lại nhé.";}
+
 /* ---------- Supabase ---------- */
 async function sbFetch(path,opts={},retry=true){
+  if(USE_CF)return cfFetch(path,opts);
   const headers={apikey:SB_KEY,"Content-Type":"application/json",...(opts.headers||{})};
   const tok=AUTH.sess?await ensureToken():null;
   if(tok)headers.Authorization="Bearer "+tok;else if(SB_KEY.startsWith("eyJ"))headers.Authorization="Bearer "+SB_KEY; // khóa anon kiểu cũ (JWT)
@@ -307,7 +325,8 @@ function roleLabel(r){const x=ROLES.find(z=>z[0]===r);return x?x[1]:"Chưa rõ";
 function roleChip(r){const x=ROLES.find(z=>z[0]===r);return h("span",{class:"chip "+(x?x[2]:"none")},x?x[1]:"Chưa rõ");}
 async function logout(){
   const tok=AUTH.sess&&AUTH.sess.access_token;
-  if(tok)authFetch("/logout",null,{token:tok}).catch(()=>{});
+  if(tok&&USE_CF)fetch(CF_URL+"/auth/logout",{method:"POST",headers:{Authorization:"Bearer "+tok}}).catch(()=>{});
+  else if(tok)authFetch("/logout",null,{token:tok}).catch(()=>{});
   saveSess(null);S.me=null;S.days=new Map();S.members=null;S.entry=null;S.preview=null;S.mapping=null;S.kpi=new Map();S.nv=[];S.dv=[];S.pb=[];S.cong={};S.ent=null;S.dm=null;S.imp=null;rebuild();
   S.gate="login";S.authUI={ok:"Đã đăng xuất."};render();}
 async function enterApp(){
@@ -322,6 +341,10 @@ function startPolling(){if(S.polling)return;S.polling=true;
   setInterval(()=>{if(!document.hidden&&!S.gate)refreshRemote();},USE_SB?30000:60000);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!S.gate&&S.lastSync&&Date.now()-S.lastSync>20000)refreshRemote();});}
 function handleAuthRedirect(){
+  if(USE_CF){const hc=(location.hash||"").slice(1);if(!/(^|&)es_(token|error)=/.test(hc))return null;
+    const q=new URLSearchParams(hc);history.replaceState(null,"",location.pathname+location.search);
+    if(q.get("es_error")){S.gate="login";S.authUI={msg:cfErr(q.get("es_error"))};return "error";}
+    saveSess({access_token:q.get("es_token"),refresh_token:null,expires_at:Math.floor(Date.now()/1000)+30*86400,user:null});return "ok";}
   const hs=(location.hash||"").slice(1);if(!/(^|&)(access_token|error|error_description)=/.test(hs))return null;
   const p=new URLSearchParams(hs);history.replaceState(null,"",location.pathname+location.search);
   if(p.get("error")||p.get("error_description")){S.gate="login";S.authUI={msg:"Đường link đã hết hạn hoặc đã được dùng. Hãy yêu cầu gửi lại."};return "error";}
@@ -331,7 +354,15 @@ function handleAuthRedirect(){
   if(t==="recovery"){S.gate="reset";S.authUI={};return "recovery";}
   if(t==="signup"||t==="email"||t==="invite")S.welcome="Đã xác nhận email.";
   return t||"ok";}
+function cfLoginView(){const A=S.authUI||{};
+  return h("div",{class:"auth-wrap"},h("div",{class:"auth-card"},
+    h("div",{class:"auth-brand"},h("div",{class:"brand-full",role:"img","aria-label":"EasySupport"}),h("div",{class:"small muted"},"Báo cáo KPI Đội Hỗ trợ & CSKH")),
+    h("h1",{class:"auth-title"},"Đăng nhập"),h("p",{class:"muted small"},"Dùng tài khoản Google của bạn, không cần nhớ mật khẩu."),
+    A.msg?h("p",{class:"auth-msg bad",role:"alert"},A.msg):A.ok?h("p",{class:"auth-msg ok",role:"status"},A.ok):null,
+    h("a",{class:"g-btn",href:cfLoginURL()},h("span",{class:"g-logo","aria-hidden":"true"},"G"),"Đăng nhập bằng Google"),
+    h("p",{class:"auth-foot small muted"},"Lần đầu đăng nhập, tài khoản sẽ chờ Admin duyệt. Dùng đúng email đã đăng ký với Admin để giữ quyền cũ.")));}
 function viewGate(){
+  if(USE_CF&&S.gate!=="pending")return cfLoginView();
   const G=S.gate;const A=S.authUI||(S.authUI={});
   const card=h("div",{class:"auth-card"});const add=(...xs)=>card.append(...xs.filter(x=>x!=null&&x!==false));
   add(h("div",{class:"auth-brand"},h("div",{class:"brand-full",role:"img","aria-label":"EasySupport"}),h("div",{class:"small muted"},"Báo cáo KPI Đội Hỗ trợ & CSKH")));
@@ -408,7 +439,7 @@ function myAccountPanel(){
     h("div",{class:"acc-forms"},
       h("div",{class:"row"},nameIn,h("button",{class:"ghost",type:"button",onclick:async()=>{const n=nameIn.value.trim();if(!n){toast("Nhập tên trước đã.");return;}
         try{await sbRpc("kpi_set_my_name",{p_ho_ten:n});S.me.ho_ten=n;toast("Đã đổi tên hiển thị.");render();}catch(e){toast(errMsg(e));}}},"Lưu tên")),
-      h("div",{class:"row"},p1,p2,h("button",{class:"ghost",type:"button",onclick:async()=>{
+      USE_CF?h("p",{class:"small muted"},"🔐 Bạn đăng nhập bằng Google nên không cần mật khẩu riêng cho web này."):h("div",{class:"row"},p1,p2,h("button",{class:"ghost",type:"button",onclick:async()=>{
         if(p1.value.length<8){toast("Mật khẩu cần ít nhất 8 ký tự.");return;}if(p1.value!==p2.value){toast("Hai lần nhập mật khẩu chưa khớp.");return;}
         try{await authFetch("/user",{password:p1.value},{method:"PUT",token:await ensureToken()});p1.value="";p2.value="";toast("Đã đổi mật khẩu.");}
         catch(e){toast(e.code==="auth"||e.code==="network"?authMsg(e):errMsg(e));}}},"Đổi mật khẩu"))));}
@@ -1213,10 +1244,58 @@ async function saveCfg2(key,value){S.busy=true;try{await sbRpc("kpi_set_config",
 /* =====================================================================
    CÀI ĐẶT, SAO LƯU, THÊM (điện thoại)
    ===================================================================== */
-function viewSettings(){const out=h("div",{class:"stack"});if(S.authMode)out.append(myAccountPanel());out.append(backupPanel2());return out;}
+function viewSettings(){const out=h("div",{class:"stack"});if(S.authMode)out.append(myAccountPanel());out.append(backupPanel2());if(S.authMode&&isAdmin())out.append(migrationPanel());return out;}
+/* ---------- chuyển dữ liệu Supabase → Cloudflare (Admin) ---------- */
+async function exportMigration(){
+  const j=await sbRpc("kpi_load",{});let cvd={tasks:[],plans:[]},members=[],mlog=[];
+  try{cvd=await sbRpc("cv_load",{p_tu:"2000-01",p_den:"2100-12"});}catch(e){}
+  try{members=await sbRpc("kpi_list_members",{});}catch(e){}
+  try{mlog=await sbRpc("kpi_member_log",{p_limit:500});}catch(e){}
+  const data={app:"easysupport-migrate",version:1,at:new Date().toISOString(),
+    config:{nhanvien:j.nhanvien||[],dichvu:j.dichvu||[],phongban:j.phongban||[],cong:j.cong||{},cv_nhom:j.cv_nhom||[],cv_mau:j.cv_mau||[]},
+    kpi:j.kpi||[],tasks:cvd.tasks||[],plans:cvd.plans||[],member_log:mlog||[],
+    members:(members||[]).map(m=>({email:m.email,ho_ten:m.ho_ten,vai_tro:m.vai_tro,ma_nv:m.ma_nv,pb_id:m.pb_id,tao_luc:m.tao_luc}))};
+  saveFile(`EasySupport_chuyen_Cloudflare_${todayISO()}.json`,JSON.stringify(data),"application/json");
+  return data;}
+async function importMigration(file,onStep){
+  let d;try{d=JSON.parse(await file.text());}catch(e){throw {code:"server",message:"File không đúng định dạng."};}
+  if(!d||d.app!=="easysupport-migrate")throw {code:"server",message:"Đây không phải file xuất từ web Supabase (mục Chuyển dữ liệu)."};
+  const post=b=>cfFetch("/admin/import",{method:"POST",body:JSON.stringify(b)});
+  const chunks=(arr,n)=>{const o=[];for(let i=0;i<arr.length;i+=n)o.push(arr.slice(i,i+n));return o;};
+  onStep("Đang xóa dữ liệu cũ trên Cloudflare và ghi danh mục…");await post({part:"start",config:d.config||{}});
+  const steps=[["members",d.members||[],150,"tài khoản"],["kpi",d.kpi||[],250,"dòng KPI"],["tasks",d.tasks||[],100,"công việc"],["plans",d.plans||[],250,"kế hoạch"],["member_log",d.member_log||[],250,"nhật ký"]];
+  for(const [part,list,n,lab] of steps){let done=0;for(const c of chunks(list,n)){await post({part,rows:c});done+=c.length;onStep(`Đang nhập ${lab}: ${done}/${list.length}…`);}}
+  const res=await post({part:"end"});
+  return {file:{kpi:(d.kpi||[]).length,tasks:(d.tasks||[]).length,plans:(d.plans||[]).length,members:(d.members||[]).length,nhanvien:((d.config||{}).nhanvien||[]).length},db:res};}
+function migrationPanel(){
+  const box=h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"☁️ Chuyển dữ liệu sang Cloudflare"),h("span",{class:"chip "+(USE_CF?"ok":"info")},USE_CF?"Đang chạy trên Cloudflare":"Đang chạy trên Supabase")));
+  const status=h("p",{class:"small muted",style:"margin-top:8px"});
+  if(!USE_CF){
+    box.append(h("p",{class:"hint"},"Bước 1: tải file chứa toàn bộ KPI, danh mục, công việc, kế hoạch, tài khoản và nhật ký đổi quyền. Bước 2: mở web Cloudflare, đăng nhập Admin bằng Google, vào Cài đặt và nhập file này."),
+      h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"btn",type:"button",onclick:async e=>{const b=e.currentTarget;b.disabled=true;status.textContent="Đang gom dữ liệu…";
+        try{const d=await exportMigration();status.textContent=`Đã tải file: ${d.kpi.length} dòng KPI, ${d.config.nhanvien.length} nhân viên, ${d.tasks.length} công việc, ${d.plans.length} kế hoạch, ${d.members.length} tài khoản.`;}
+        catch(err){status.textContent=errMsg(err);}finally{b.disabled=false;}}},"⬇ Xuất dữ liệu để chuyển sang Cloudflare")),status);
+    return box;}
+  const file=h("input",{type:"file",accept:".json","aria-label":"File chuyển dữ liệu"});const result=h("div",{});
+  const showRes=r=>result.replaceChildren(h("div",{class:"scroll"},h("table",{class:"grid"},h("thead",{},h("tr",{},h("th",{class:"l"},"Loại dữ liệu"),h("th",{},"Trong file"),h("th",{},"Trên Cloudflare"),h("th",{class:"c"},"Khớp"))),
+    h("tbody",{},[["Dòng KPI","kpi"],["Nhân viên","nhanvien"],["Công việc","tasks"],["Kế hoạch tháng","plans"],["Tài khoản","members"]].map(([l,k])=>{const a=r.file[k],c=r.db[k];const ok=k==="members"?c>=a:a===c;
+      return h("tr",{},h("td",{class:"l"},l),h("td",{},String(a)),h("td",{},String(c)),h("td",{class:"c"},h("span",{class:"chip "+(ok?"ok":"bad")},ok?"Khớp":"Lệch")));})))));
+  if(S.migRes){status.textContent=`✅ Đã nhập xong lúc ${S.migRes.luc}. Đối chiếu số dòng:`;showRes(S.migRes);}
+  box.append(h("p",{class:"hint"},"Chọn file đã xuất từ web Supabase. Việc nhập sẽ THAY TOÀN BỘ số liệu KPI, công việc, kế hoạch và danh mục trên Cloudflare bằng nội dung trong file. Tài khoản được ghép theo email; tài khoản của bạn luôn giữ quyền Admin."),
+    h("div",{class:"row",style:"margin-top:10px"},file,h("button",{class:"btn",type:"button",onclick:async e=>{const f=file.files&&file.files[0];if(!f){toast("Chọn file trước đã.");return;}
+      if(!confirm("Nhập file này sẽ thay toàn bộ số liệu đang có trên Cloudflare. Tiếp tục?"))return;
+      const b=e.currentTarget;b.disabled=true;S.busy=true;
+      try{const r=await importMigration(f,t=>{status.textContent=t;});
+        S.migRes={...r,luc:new Date().toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"})};
+        S.month=null;S.year=null;S.cv.key="";S.cvStale=true;S.dm=null;S.ent=null;
+        await loadRemote();render();toast("Đã chuyển dữ liệu sang Cloudflare.");}
+      catch(err){status.textContent="❌ "+errMsg(err);}finally{S.busy=false;b.disabled=false;}}},"Nhập dữ liệu từ Supabase")),
+    h("div",{class:"row",style:"margin-top:10px"},h("button",{class:"ghost",type:"button",onclick:async()=>{try{const d=await cfFetch("/admin/export");saveFile(`EasySupport_Cloudflare_sao_luu_${todayISO()}.json`,JSON.stringify(d),"application/json");}catch(err){toast(errMsg(err));}}},"⬇ Tải bản sao lưu toàn bộ (Cloudflare)")),
+    status,result);
+  return box;}
 function backupPanel2(){const file=h("input",{type:"file",accept:".json","aria-label":"Chọn file sao lưu"});const ad=isAdmin();
   return h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Sao lưu và khôi phục"),h("span",{class:"small muted"},`${S.kpi.size} dòng KPI, ${S.nv.length} nhân viên`)),
-    h("p",{class:"hint"},"Tải toàn bộ danh mục và số liệu KPI về một file .json để cất giữ. Nên làm mỗi tháng một lần."),
+    h("p",{class:"hint"},"Tải toàn bộ danh mục và số liệu KPI về một file .json để cất giữ. Nên làm mỗi tháng một lần."),autoBackupLine(),
     h("div",{class:"row",style:"margin-top:12px"},h("button",{class:"ghost",type:"button",onclick:()=>{
       const data={app:"easysupport-kpi",version:2,exportedAt:new Date().toISOString(),nhanvien:S.nv,dichvu:S.dv,phongban:S.pb,cong:S.cong,kpi:[...S.kpi.values()]};
       saveFile(`EasySupport_sao_luu_${todayISO()}.json`,JSON.stringify(data),"application/json");}},"Tải file sao lưu"),
@@ -1226,6 +1305,18 @@ function backupPanel2(){const file=h("input",{type:"file",accept:".json","aria-l
         try{for(const k of ["phongban","dichvu","nhanvien","cong"])if(d[k]!=null)await saveCfg2(k,d[k]);
           const rows=d.kpi.filter(r=>r&&r.thang&&r.ma).map(({by,at,...r})=>r);for(let i=0;i<rows.length;i+=300)await saveKpiRows(rows.slice(i,i+300),[]);
           toast(`Đã khôi phục ${rows.length} dòng KPI.`);S.dm=null;S.ent=null;render();}catch(e){toast(errMsg(e));}}},"Khôi phục từ file"):null));}
+/* dòng "Sao lưu tự động gần nhất" (GitHub Actions ghi dấu vào kpi_config) */
+function autoBackupLine(){
+  const el=h("p",{class:"small auto-bk"},"🤖 Đang kiểm tra sao lưu tự động…");
+  if(!USE_SB||USE_CF){el.textContent="";return el;}
+  sbFetch("/rest/v1/kpi_config?select=value,updated_at&key=eq.sao_luu_tu_dong").then(r=>{const v=r&&r[0]&&r[0].value;
+    if(!v){el.textContent="🤖 Chưa bật sao lưu tự động hằng tuần. Xem hướng dẫn trong file sao-luu/HUONG_DAN_SAO_LUU.md (khoảng 10 phút).";el.className="small auto-bk warn";return;}
+    const t=new Date(v.luc),days=(Date.now()-t)/864e5;
+    const when=t.toLocaleString("vi-VN",{weekday:"long",hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"});
+    el.textContent=`🤖 Sao lưu tự động gần nhất: ${when}, gồm ${v.kpi} dòng KPI, ${v.nhan_vien} nhân viên, ${v.cong_viec} công việc.`+(days>9?" ⚠️ Đã quá 9 ngày chưa có bản mới, hãy kiểm tra tab Actions của kho sao lưu trên GitHub.":"");
+    el.className="small auto-bk "+(days>9?"warn":"ok");})
+  .catch(()=>{el.textContent="";});
+  return el;}
 function viewMore(){
   const items=[["thongke","Báo cáo thống kê","stats","Tổng hợp kỳ, hồ sơ nhân viên, phòng ban, nhân sự"],["phongban","Theo phòng ban","building","KPI trung bình, so sánh nhân viên"],["dichvu","Theo dịch vụ","layers","KPI từng dịch vụ theo tháng, năm"],
     ["danhmuc","Danh mục","list","Nhân viên, dịch vụ, phòng ban, công việc"],["caidat","Cài đặt","sliders","Tài khoản của tôi, sao lưu"]];
@@ -1650,10 +1741,13 @@ const ALL=["admin","quan_ly","nhan_vien"],MGR=["admin","quan_ly"],ADM=["admin"];
 const HELP=[
  {id:"batdau",ic:"🚀",t:"Bắt đầu sử dụng",r:ALL,b:[
   ["p","**EasySupport** là web báo cáo KPI tháng và quản lý công việc của **Đội Hỗ trợ & CSKH**. Địa chỉ: **easysupport.io.vn**."],
-  ["h","Tạo tài khoản lần đầu"],
-  ["steps",["Ở màn đăng nhập, bấm **Chưa có tài khoản? Đăng ký**.","Điền họ tên, email, mật khẩu (ít nhất 8 ký tự), bấm **Tạo tài khoản**.","Thấy màn **Đang chờ duyệt** thì nhắn Admin duyệt và gắn Mã NV cho bạn, rồi bấm **Kiểm tra lại**."]],
-  ["h","Quên mật khẩu"],
-  ["steps",["Bấm **Quên mật khẩu?**, nhập email, bấm gửi.","Mở email (xem cả mục Spam), bấm đường link, đặt mật khẩu mới."]],
+  ...(USE_CF?[["h","Đăng nhập bằng Google"],
+    ["steps",["Bấm **Đăng nhập bằng Google**, chọn tài khoản Google của bạn.","Lần đầu đăng nhập, tài khoản sẽ **chờ Admin duyệt**. Nhắn Admin duyệt và gắn Mã NV, rồi bấm **Kiểm tra lại**.","Dùng đúng email đã dùng trước đây để giữ nguyên vai trò, Mã NV và phòng phụ trách."]],
+    ["tip","Web không lưu mật khẩu. Muốn đổi tài khoản, bấm **Đăng xuất** rồi đăng nhập Google bằng tài khoản khác."]]
+  :[["h","Tạo tài khoản lần đầu"],
+    ["steps",["Ở màn đăng nhập, bấm **Chưa có tài khoản? Đăng ký**.","Điền họ tên, email, mật khẩu (ít nhất 8 ký tự), bấm **Tạo tài khoản**.","Thấy màn **Đang chờ duyệt** thì nhắn Admin duyệt và gắn Mã NV cho bạn, rồi bấm **Kiểm tra lại**."]],
+    ["h","Quên mật khẩu"],
+    ["steps",["Bấm **Quên mật khẩu?**, nhập email, bấm gửi.","Mở email (xem cả mục Spam), bấm đường link, đặt mật khẩu mới."]]]),
   ["h","Cài web như ứng dụng trên điện thoại"],
   ["ul",["**iPhone (Safari):** bấm nút Chia sẻ, chọn **Thêm vào MH chính**.","**Android (Chrome):** bấm **⋮**, chọn **Thêm vào màn hình chính**."]],
   ["tip","Web nhớ đăng nhập trên máy của bạn. Dùng máy chung thì nhớ **Đăng xuất** (biểu tượng cửa ra ở góc dưới menu)."]]},
@@ -1718,7 +1812,7 @@ const HELP=[
   ["steps",["Vào **Tài khoản**, chọn **Phòng ban phụ trách** và **Mã NV** của bạn.","Bấm **Lưu**. Từ lúc này bạn sửa được dữ liệu của phòng đã chọn."]],
   ["tip","Mọi lần đổi vai trò, phòng phụ trách, Mã NV đều ghi vào **🛡️ Nhật ký đổi quyền** (Admin xem cuối trang Tài khoản)."]]},
  {id:"saoluu",ic:"💾",t:"Cài đặt và sao lưu",r:ALL,b:[
-  ["ul",["**Tài khoản của tôi** (mục Cài đặt): đổi tên hiển thị, đổi mật khẩu.","**Tải file sao lưu**: tải toàn bộ danh mục và KPI về file .json, nên làm mỗi tháng một lần.","**Khôi phục từ file** (Admin): những tháng có trong file sẽ ghi đè lên số hiện tại."]]]},
+  ["ul",["**Tài khoản của tôi** (mục Cài đặt): đổi tên hiển thị"+(USE_CF?".":", đổi mật khẩu."),"**Tải file sao lưu**: tải toàn bộ danh mục và KPI về file .json, nên làm mỗi tháng một lần.","**Sao lưu tự động**: mỗi sáng Chủ nhật hệ thống tự sao lưu vào kho GitHub riêng tư của Admin; mục Cài đặt hiện thời điểm sao lưu gần nhất.","**Khôi phục từ file** (Admin): những tháng có trong file sẽ ghi đè lên số hiện tại."]]]},
  {id:"hoidap",ic:"❓",t:"Câu hỏi thường gặp",r:ALL,b:[
   ["qa","Đăng ký rồi nhưng vẫn thấy “Đang chờ duyệt”?","Nhắn Admin duyệt và gắn Mã NV, rồi bấm **Kiểm tra lại**."],
   ["qa","Tôi không nhập được KPI, ô bị khóa?","Nhân viên: tài khoản chưa gắn Mã NV, nhờ Admin gắn. Quản lý: chưa chọn phòng phụ trách (mục Tài khoản), hoặc đang xem phòng khác."],

@@ -827,3 +827,17 @@ body{background:
 @media (max-width:640px){.fx-menu{width:min(360px,calc(100vw - 16px))}}
 .snow-tg[data-mode="night"]{color:#5B6CD6} .snow-tg[data-mode="storm"]{color:#475569} .snow-tg[data-mode="fog"],.snow-tg[data-mode="cloud"]{color:#64748B}
 .snow-tg[data-mode="partly"]{color:#E59A00} .snow-tg[data-mode="drizzle"]{color:#2F7BD6}
+/* ===== đăng nhập Google ===== */
+.auth-title{font-size:22px;margin:14px 0 4px}
+.g-btn{display:flex;align-items:center;justify-content:center;gap:12px;margin:18px 0 6px;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:700;font-size:15px;text-decoration:none;box-shadow:0 2px 6px rgba(11,27,58,.06)}
+.g-btn:hover{border-color:#4285F4;box-shadow:0 4px 14px rgba(66,133,244,.2)}
+.g-logo{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:conic-gradient(#EA4335 0 25%,#FBBC05 0 50%,#34A853 0 75%,#4285F4 0)}
+.pw-wrap{position:relative;display:flex}
+.pw-wrap input{flex:1;padding-right:56px}
+.pw-wrap .pw-tg{position:absolute;right:6px;top:50%;transform:translateY(-50%)}
+.auth-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px}
+.tmp-pw{border-left:4px solid var(--warn);display:flex;flex-direction:column;gap:8px}
+.tmp-code{font-size:20px;font-weight:800;letter-spacing:.08em;background:var(--surface-2);padding:4px 10px;border-radius:8px}
+.auto-bk{margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--surface-2)}
+.auto-bk.ok{background:color-mix(in srgb,var(--ok-bg) 80%,transparent)}
+.auto-bk.warn{background:var(--warn-bg)}
