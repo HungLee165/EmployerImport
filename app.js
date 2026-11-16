@@ -286,6 +286,7 @@ function errMsg(e){
   if(/chi_quan_ly_danh_gia/.test(raw))return "Chỉ Quản lý phòng hoặc Admin mới đánh giá được.";
   if(/chi_nguoi_duoc_giao_tu_danh_gia/.test(raw))return "Chỉ người được giao việc mới tự đánh giá được.";
   if(/last_admin/.test(raw))return "Phải còn ít nhất 1 Admin, không hạ quyền Admin cuối cùng được.";
+  if(/thieu_tieu_de/.test(raw))return "Nhập tiêu đề thông báo.";
   if(/khong_co_quyen_pb/.test(raw))return "Bạn chỉ thao tác được dữ liệu và công việc của phòng ban mình phụ trách.";
   if(/chi_admin_cap_nhat_tien_do/.test(raw))return "Chỉ Admin mới cập nhật tiến độ và kết quả công việc.";
   {const mm=raw.match(/ma_nv_trung:(\S+)/);if(mm)return `Mã NV ${mm[1]} đã tồn tại trong Danh mục.`;}
@@ -1352,6 +1353,7 @@ function go(v){if(S.view==="danhmuc"&&v!=="danhmuc"&&dmDirty())toast("Danh mục
   if(v==="danhmuc"&&S.dm&&!dmDirty())S.dm=null;S.view=v;render();window.scrollTo(0,0);
   if(v==="danhmuc"&&S.mode==="remote")refreshRemote(true);}
 function render(){
+  setTimeout(()=>{if(S.authMode&&S.me&&!S.gate&&writable()){bellBtn();bellBadge();if(S._bellVer!==S.version){S._bellVer=S.version;bellSoon();}}else{const b=document.querySelector(".bell-btn");if(b)b.remove();}},0);
   closeCal();
   document.body.classList.toggle("gated",!!S.gate);
   if(S.gate){destroyCharts();document.getElementById("main").replaceChildren(viewGate());
@@ -1761,6 +1763,7 @@ const HELP=[
   ["ul",["**Menu trái** (điện thoại: thanh dưới đáy) dẫn tới các mục. Nút xanh **＋ Nhập KPI tháng này** luôn ở trên cùng.",
    "**Lời chào** đổi theo buổi sáng, trưa, chiều, tối. Đúng ngày sinh nhật của ai, đầu trang có lời chúc 🎂.",
    "Ô **thời tiết** ở góc trên (ví dụ ☁️ Hà Nội 24°C) tự cập nhật mỗi 30 phút theo khu vực của bạn (mặc định Hà Nội).","Nút hiệu ứng ở góc trên: chọn **Tự động theo thời tiết** (nắng, nắng nhẹ có mây, mây trôi, sương mù, mưa phùn, mưa nhẹ/vừa/to, dông, tuyết, đêm sao; dưới 15°C rắc thêm tuyết nhẹ) hoặc tự chọn một hiệu ứng, hoặc Tắt.",
+   "Chuông **🔔** ở góc trên: nhắc nhập KPI, việc sắp đến hạn hoặc quá hạn, tài khoản chờ duyệt, sao lưu, và **thông báo chung** do Admin đăng. Số đỏ là số mục chưa xem; bấm từng mục để đi thẳng tới chỗ cần xử lý. Trong **⚙ Tùy chỉnh** có thể tắt từng nhóm và bật **thông báo bật lên của trình duyệt**.",
    "Chấm xanh **Cập nhật** ở góc dưới menu: web tự làm mới mỗi 30 giây, bấm **Làm mới** để cập nhật ngay."]]]},
  {id:"nhapkpi",ic:"✏️",t:"Nhập KPI tháng",r:ALL,b:[
   ["p","Mỗi người mỗi tháng có 1 dòng: số lượng từng dịch vụ, ngày nghỉ, giờ trực. Web tự tính phần còn lại."],
@@ -2031,6 +2034,166 @@ function tkNhanSu(){
       h("tr",{class:"grp"},h("td",{class:"l"},h("strong",{},"Tổng")),cvs.map(c=>h("td",{},h("strong",{},String(L.filter(x=>(x.cv||"(chưa có)")===c).length)))),h("td",{},h("strong",{},String(L.length)))))))));
   return out;}
 
+/* =====================================================================
+   CHUÔNG THÔNG BÁO 🔔: nhắc KPI, nhắc công việc, tài khoản và hệ thống, thông báo chung
+   ===================================================================== */
+const BELL_GROUPS=[["tb","📢","Thông báo chung"],["kpi","📊","Nhắc KPI"],["cv","✅","Nhắc công việc"],["ht","🛡️","Tài khoản và hệ thống"]];
+const bellLS=(k,d)=>{try{return JSON.parse(lsGet(k)||"null")??d;}catch(e){return d;}};
+const bellKey=k=>`kpi:bell:${k}:${(S.me&&S.me.email)||""}`;
+function bellRead(){return new Set(bellLS(bellKey("read"),[]));}
+function bellMarkRead(ids){const r=bellRead();ids.forEach(i=>r.add(i));lsSet(bellKey("read"),JSON.stringify([...r].slice(-400)));}
+function bellOff(){return new Set(bellLS(bellKey("off"),[]));}
+const dLeft=iso=>Math.round((parseISO(iso)-parseISO(todayISO()))/864e5);
+function bellSoon(){clearTimeout(S._bellT);S._bellT=setTimeout(()=>bellCompute().catch(()=>{}),400);}
+async function bellCompute(){
+  if(!S.authMode||!S.me||S.gate||!writable())return;
+  const items=[];const add=(g,id,ic,lv,title,body,go,ts)=>items.push({g,id,ic,lv,title,body,go,ts:ts||""});
+  const today=todayISO(),th=thisMonth(),pv=shiftMonth(th,-1),day=+today.slice(8),last=new Date(+th.slice(0,4),+th.slice(5),0).getDate(),endSoon=day>last-5,early=day<=7;
+  const adm=isAdmin(),mgr=isMgr()&&!adm,myPb=myPbId(),ma=myMa();
+  const has=(m,code)=>S.kpi.has(m+"|"+code)||[...S.kpi.values()].some(r=>r.thang===m&&fold(r.ma)===fold(code));
+  const goEntry=m=>()=>{S.month=m;S.year=+m.slice(0,4);S.ent=null;go("nhap");};
+  /* ---------- 📊 Nhắc KPI ---------- */
+  if(ma&&!adm){
+    if(endSoon&&!has(th,ma))add("kpi",`kpi-me-${th}`,"✏️","warn",`Bạn chưa nhập KPI ${monthLabel(th).toLowerCase()}`,`Còn ${last-day+1} ngày nữa là hết tháng.`,goEntry(th));
+    if(early&&!has(pv,ma))add("kpi",`kpi-me-${pv}`,"✏️","bad",`Bạn chưa nhập KPI ${monthLabel(pv).toLowerCase()}`,"Tháng trước đã kết thúc, hãy nhập bổ sung.",goEntry(pv));
+  }
+  const scopePbs=adm?S.pb.map(p=>p.id):(mgr&&myPb?[myPb]:[]);
+  for(const pb of scopePbs){
+    const list=S.nv.filter(n=>n.pb===pb);if(!list.length)continue;
+    for(const [m,cond,lv] of [[th,endSoon,"warn"],[pv,early,"bad"]]){if(!cond)continue;
+      const miss=list.filter(n=>!has(m,n.ma));if(!miss.length)continue;
+      if(adm&&miss.length<list.length&&m===th)continue;   // Admin: chỉ nhắc phòng chưa nhập gì hoặc tháng trước còn thiếu
+      add("kpi",`kpi-pb-${pb}-${m}-${miss.length}`,"👥",lv,adm?`${pbName(pb)}: còn ${miss.length}/${list.length} người chưa có KPI ${monthLabel(m).toLowerCase()}`:`Phòng bạn còn ${miss.length}/${list.length} người chưa nhập KPI ${monthLabel(m).toLowerCase()}`,
+        miss.slice(0,6).map(n=>n.ten).join(", ")+(miss.length>6?"…":""),goEntry(m));}
+  }
+  if(mgr&&myPb){   // dưới mục tiêu 2 tháng có số liệu gần nhất
+    const ms=S.kmKeys.filter(k=>k<=th).slice(-2);
+    if(ms.length===2){const low=S.nv.filter(n=>n.pb===myPb).filter(n=>ms.every(m=>{const r=S.kpi.get(m+"|"+n.ma);const c=r&&calc(r);return c&&c.pass===false;}));
+      if(low.length)add("kpi",`kpi-low-${ms.join("-")}-${low.length}`,"📉","warn",`${low.length} người phòng bạn dưới mục tiêu 2 tháng liền`,low.slice(0,6).map(n=>n.ten).join(", "),()=>{S.tkTab="nv";S.tkNv=low[0].ma;go("thongke");});}
+  }
+  if((adm||mgr)&&early&&!(S.cong&&S.cong.override&&S.cong.override[th]!=null))
+    add("kpi",`kpi-cong-${th}`,"📅","info",`${monthLabel(th)} chưa nhập công chuẩn`,`Đang dùng mặc định ${(S.cong&&S.cong.macdinh)||24} công. ${adm?"Bấm để nhập.":"Nhắc Admin nhập."}`,goEntry(th));
+  /* ---------- ✅ Nhắc công việc ---------- */
+  if((adm||mgr)&&!cvNeedUpgrade()){
+    try{
+      const ck=th+"|"+(S.version||"");
+      if(!S.bellCv||S.bellCv.k!==ck||Date.now()-S.bellCv.at>5*60e3){const r=await sbRpc("cv_load",{p_tu:pv,p_den:th});S.bellCv={k:ck,at:Date.now(),tasks:r.tasks||[],plans:r.plans||[]};}
+      const tasks=S.bellCv.tasks.filter(t=>adm||taskPb(t)===myPb),plans=S.bellCv.plans;
+      const soon=tasks.filter(t=>t.thang===th&&t.han&&cvStatus(t)!=="xong"&&dLeft(t.han)>=0&&dLeft(t.han)<=2);
+      soon.slice(0,8).forEach(t=>add("cv",`cv-soon-${t.id}`,"⏰","warn",`“${t.ten}” còn ${dLeft(t.han)===0?"hôm nay":dLeft(t.han)+" ngày"} đến hạn`,`${pbName(taskPb(t))}, tiến độ ${+t.tien_do||0}%`,()=>{S.cvMonth=t.thang;S.cvPbSel=taskPb(t);go("congviec");}));
+      const od=new Map();tasks.filter(t=>cvStatus(t)==="qua_han").forEach(t=>{const p=taskPb(t);od.set(p,(od.get(p)||0)+1);});
+      for(const [p,n] of od)add("cv",`cv-od-${p}-${n}`,"🚨","bad",adm?`${pbName(p)} có ${n} việc quá hạn`:`Phòng bạn có ${n} việc quá hạn`,"Bấm để xem và cập nhật.",()=>{S.cvMonth=th;S.cvPbSel=p;go("congviec");});
+      if(early)for(const p of scopePbs){const pl=plans.find(x=>x.thang===th&&x.ma_nv==="PB:"+p);
+        if(!(pl&&pl.chot))add("cv",`cv-plan-${p}-${th}`,"🔒","info",adm?`${pbName(p)} chưa chốt kế hoạch ${monthLabel(th).toLowerCase()}`:`Kế hoạch ${monthLabel(th).toLowerCase()} của phòng chưa chốt`,"Chốt kế hoạch để theo dõi việc phát sinh.",()=>{S.cvMonth=th;S.cvPbSel=p;go("congviec");});}
+      if(mgr&&myPb){   // so giờ máy chủ với giờ máy chủ, không phụ thuộc đồng hồ máy người dùng
+        const mine=tasks.filter(t=>taskPb(t)===myPb);const ms=t=>Date.parse(t.cap_nhat_luc)||0;
+        const maxTs=mine.reduce((m,t)=>Math.max(m,ms(t)),0);S.bellCvMax=maxTs;
+        const seen=+(lsGet(bellKey("cvseen"))||0);const myName=(S.me.ho_ten||S.me.email);
+        const upd=mine.filter(t=>ms(t)>seen&&t.cap_nhat_boi&&t.cap_nhat_boi!==myName&&t.tao_luc!==t.cap_nhat_luc);
+        if(upd.length&&seen)add("cv",`cv-upd-${maxTs}`,"🔄","info",`Admin vừa cập nhật ${upd.length} việc của phòng bạn`,upd.slice(0,4).map(t=>`${t.ten}: ${+t.tien_do||0}%`).join("; "),()=>{lsSet(bellKey("cvseen"),String(maxTs));S.cvMonth=th;S.cvPbSel=myPb;go("congviec");});
+        if(!seen&&maxTs)lsSet(bellKey("cvseen"),String(maxTs));}
+      if(adm){const ne=tasks.filter(t=>cvStatus(t)==="xong"&&t.ql_danh_gia==null);
+        if(ne.length)add("cv",`cv-ne-${ne.length}`,"⭐","info",`${ne.length} việc đã xong nhưng chưa được đánh giá`,[...new Set(ne.map(t=>pbName(taskPb(t))))].join(", "),()=>{S.cvMonth=ne[0].thang;S.cvPbSel=taskPb(ne[0]);go("congviec");});}
+    }catch(e){}
+  }
+  /* ---------- 🛡️ Tài khoản và hệ thống ---------- */
+  if(adm){
+    if(S.me&&+S.me.pending)add("ht",`ht-pending-${S.me.pending}`,"👤","warn",`${S.me.pending} tài khoản đang chờ duyệt`,"Duyệt và gắn Mã NV cho người mới.",()=>go("taikhoan"));
+    try{const r=await sbFetch("/rest/v1/kpi_config?select=value&key=eq.sao_luu_tu_dong");const v=r&&r[0]&&r[0].value;
+      if(!v)add("ht","ht-bk-none","💾","info","Chưa bật sao lưu tự động hằng tuần","Xem hướng dẫn trong file sao-luu/HUONG_DAN_SAO_LUU.md.",()=>go("caidat"));
+      else{const d=(Date.now()-new Date(v.luc))/864e5;if(d>9)add("ht",`ht-bk-old-${String(v.luc).slice(0,10)}`,"💾","bad",`Đã ${Math.floor(d)} ngày chưa có bản sao lưu mới`,"Kiểm tra tab Actions của kho sao lưu trên GitHub.",()=>go("caidat"));}}catch(e){}
+    try{const myName=S.me.ho_ten||S.me.email;const log=(await sbRpc("kpi_member_log",{p_limit:20}))||[];const since=Date.now()-7*864e5;
+      log.filter(x=>x.boi&&x.boi!==myName&&x.boi!=="Hệ thống"&&new Date(x.luc)>since).slice(0,5).forEach(x=>{const F={vai_tro:"vai trò",pb_id:"phòng phụ trách",ma_nv:"Mã NV"};
+        add("ht",`ht-log-${x.id||x.luc}`,"🔁","info",`${x.boi} vừa đổi ${F[x.truong]||x.truong}`,`${x.truong==="pb_id"?(pbName(x.cu)||"(trống)"):(x.cu||"(trống)")} → ${x.truong==="pb_id"?(pbName(x.moi)||"(trống)"):(x.moi||"(trống)")}`,()=>go("taikhoan"),x.luc);});}catch(e){}
+  }
+  if(mgr&&!myPb)add("ht","ht-nopb","🏢","warn","Bạn chưa chọn phòng phụ trách","Chưa chọn thì bạn chỉ xem được, chưa sửa được dữ liệu.",()=>go("taikhoan"));
+  if(!adm&&!ma)add("ht","ht-noma","🪪","warn","Tài khoản chưa gắn Mã NV","Nhắn Admin gắn Mã NV để nhập được KPI của bạn.",null);
+  /* ---------- 📢 Thông báo chung ---------- */
+  try{S.notices=(await sbRpc("tb_list",{}))||[];S.noticesOk=true;}catch(e){S.noticesOk=false;S.notices=[];}
+  S.notices.forEach(n=>add("tb",`tb-${n.id}-${n.sua_luc}`,n.ghim?"📌":"📢",n.ghim?"warn":"info",n.tieu_de,n.noi_dung,()=>openNotice(n),n.tao_luc));
+  /* ---------- tổng hợp ---------- */
+  const off=bellOff(),read=bellRead();
+  S.bell=items.filter(i=>!off.has(i.g)).map(i=>({...i,unread:!read.has(i.id)}));
+  bellBadge();bellPush();
+  if(document.querySelector(".bell-pop"))bellPanel(true);}
+function bellBadge(){const btn=bellBtn();if(!btn)return;const n=(S.bell||[]).filter(i=>i.unread).length;
+  const b=btn.querySelector(".bell-n");b.textContent=n>99?"99+":String(n);b.hidden=!n;btn.setAttribute("aria-label",n?`Thông báo, ${n} mục chưa xem`:"Thông báo");}
+function bellBtn(){let el=document.querySelector(".bell-btn");const anchor=document.querySelector(".wx-chip")||document.querySelector(".snow-tg");
+  if(!el&&anchor){el=h("button",{type:"button",class:"bell-btn","aria-label":"Thông báo",onclick:()=>bellPanel()},h("span",{"aria-hidden":"true"},"🔔"),h("span",{class:"bell-n",hidden:true},"0"));anchor.before(el);}
+  return el;}
+/* thông báo bật lên của trình duyệt (khi đang mở web) */
+function bellPush(){
+  if(!("Notification" in window)||Notification.permission!=="granted")return;
+  const done=new Set(bellLS(bellKey("pushed"),[]));const first=!lsGet(bellKey("pushed"));
+  const fresh=(S.bell||[]).filter(i=>i.unread&&!done.has(i.id));
+  fresh.forEach(i=>done.add(i.id));lsSet(bellKey("pushed"),JSON.stringify([...done].slice(-400)));
+  if(first)return;   // lần đầu bật: không dội cả loạt thông báo cũ
+  fresh.slice(0,3).forEach(i=>{try{const n=new Notification(i.title,{body:(i.body||"").slice(0,160),icon:"icons/icon-192.png",tag:i.id});
+    n.onclick=()=>{window.focus();bellMarkRead([i.id]);if(i.go)i.go();bellSoon();n.close();};}catch(e){}});
+  if(fresh.length>3){try{new Notification(`EasySupport: ${fresh.length} thông báo mới`,{body:"Mở chuông 🔔 để xem tất cả.",icon:"icons/icon-192.png",tag:"bell-many"});}catch(e){}}}
+function bellPanel(refresh){
+  let pop=document.querySelector(".bell-pop");if(pop&&!refresh){pop.remove();return;}
+  const btn=bellBtn();if(!btn)return;
+  const items=S.bell||[];const off=bellOff();
+  const close=()=>{const p=document.querySelector(".bell-pop");if(p)p.remove();document.removeEventListener("mousedown",out,true);document.removeEventListener("keydown",key,true);};
+  const out=e=>{const p=document.querySelector(".bell-pop");if(p&&!p.contains(e.target)&&!btn.contains(e.target)&&!(e.target.closest&&e.target.closest(".cv-modal-back")))close();};
+  const key=e=>{if(e.key==="Escape"&&!document.querySelector(".cv-modal-back"))close();};
+  const row=i=>h("button",{type:"button",class:"bell-item lv-"+i.lv+(i.unread?" unread":""),onclick:()=>{bellMarkRead([i.id]);close();if(i.go)i.go();bellSoon();}},
+    h("span",{class:"bi-ic"},i.ic),h("span",{class:"bi-t"},h("strong",{},i.title),i.body?h("span",{},i.body.length>140?i.body.slice(0,140)+"…":i.body):null),
+    i.unread?h("span",{class:"bi-dot","aria-label":"chưa xem"}):null);
+  const groups=BELL_GROUPS.map(([g,ic,lab])=>{const list=items.filter(i=>i.g===g);if(!list.length)return null;
+    return h("div",{class:"bell-g"},h("div",{class:"bell-gh"},ic+" "+lab,h("span",{class:"small muted"},String(list.length))),list.map(row));}).filter(Boolean);
+  const perm="Notification" in window?Notification.permission:"unsupported";
+  const settings=h("details",{class:"bell-set"},h("summary",{},"⚙ Tùy chỉnh"),
+    BELL_GROUPS.map(([g,ic,lab])=>h("label",{class:"bell-chk"},h("input",{type:"checkbox",checked:!off.has(g),onchange:e=>{const o=bellOff();e.target.checked?o.delete(g):o.add(g);lsSet(bellKey("off"),JSON.stringify([...o]));bellCompute();}}),ic+" "+lab)),
+    perm==="unsupported"?h("p",{class:"small muted"},"Trình duyệt này không hỗ trợ thông báo bật lên."):
+    perm==="granted"?h("p",{class:"small muted"},"✅ Đã bật thông báo bật lên của trình duyệt (khi đang mở web)."):
+    perm==="denied"?h("p",{class:"small muted"},"Thông báo bật lên đang bị chặn. Bấm biểu tượng ổ khóa cạnh thanh địa chỉ để cho phép."):
+    h("button",{class:"ghost",type:"button",onclick:async()=>{const r=await Notification.requestPermission();if(r==="granted"){lsDel(bellKey("pushed"));bellPush();toast("Đã bật thông báo bật lên.");}bellPanel(true);}},"🔔 Bật thông báo bật lên của trình duyệt"));
+  const box=h("div",{class:"bell-pop",role:"dialog","aria-label":"Thông báo"},
+    h("div",{class:"bell-head"},h("strong",{},"Thông báo"),h("span",{class:"spacer"}),
+      isAdmin()?h("button",{class:"btn sm",type:"button",onclick:()=>{close();openNoticeEditor();}},"＋ Đăng thông báo"):null,
+      items.some(i=>i.unread)?h("button",{class:"linkish",type:"button",onclick:()=>{bellMarkRead(items.map(i=>i.id));if(S.bellCvMax)lsSet(bellKey("cvseen"),String(S.bellCvMax));bellSoon();S.bell=items.map(i=>({...i,unread:false}));bellBadge();bellPanel(true);}},"Đánh dấu đã xem"):null),
+    S.noticesOk===false&&isAdmin()?h("p",{class:"small bell-warn"},"Chưa có bảng thông báo chung. Admin chạy file thong_bao.sql trong Supabase."):null,
+    groups.length?h("div",{class:"bell-list"},groups):h("div",{class:"bell-empty"},h("div",{style:"font-size:30px"},"🎉"),h("p",{class:"muted"},"Không có gì cần chú ý. Mọi việc đang ổn!")),settings);
+  if(pop)pop.replaceWith(box);else document.body.append(box);
+  const r=btn.getBoundingClientRect();box.style.top=(r.bottom+8)+"px";box.style.left=Math.max(8,Math.min(innerWidth-box.offsetWidth-8,r.right-box.offsetWidth))+"px";
+  if(!pop)setTimeout(()=>{document.addEventListener("mousedown",out,true);document.addEventListener("keydown",key,true);},0);}
+/* xem một thông báo chung */
+function openNotice(n){
+  const back=h("div",{class:"cv-modal-back",onclick:e=>{if(e.target===back)back.remove();}});
+  const when=new Date(n.tao_luc).toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"});
+  back.append(h("div",{class:"cv-modal",role:"dialog","aria-modal":"true","aria-label":n.tieu_de,style:"max-width:560px"},
+    h("div",{class:"cvm-head"},h("div",{},h("div",{class:"small muted"},`${n.ghim?"📌 Ghim, ":""}${n.pham_vi==="all"?"Cả đội":pbName(n.pham_vi)}, ${n.tao_boi||"Admin"}, ${when}`),h("h3",{},n.tieu_de)),
+      h("button",{class:"g-x",type:"button","aria-label":"Đóng",onclick:()=>back.remove()},"×")),
+    h("div",{class:"cvm-body"},h("p",{class:"notice-body"},n.noi_dung||"(không có nội dung)"),n.het_han?h("p",{class:"small muted"},"Tự ẩn sau ngày "+fmtFull(n.het_han)):null),
+    h("div",{class:"cvm-foot"},isAdmin()?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!confirm("Xóa thông báo này?"))return;
+        try{await sbRpc("tb_delete",{p_id:n.id});back.remove();toast("Đã xóa thông báo.");bellSoon();}catch(e){toast(errMsg(e));}}},"Xóa"):null,
+      isAdmin()?h("button",{class:"ghost",type:"button",onclick:()=>{back.remove();openNoticeEditor(n);}},"Sửa"):null,
+      h("span",{class:"spacer"}),h("button",{class:"btn",type:"button",onclick:()=>back.remove()},"Đã đọc"))));
+  document.body.append(back);}
+/* Admin đăng hoặc sửa thông báo */
+function openNoticeEditor(n){
+  n=n||{tieu_de:"",noi_dung:"",pham_vi:"all",ghim:false,het_han:null};const d={...n};
+  const back=h("div",{class:"cv-modal-back",onclick:e=>{if(e.target===back)back.remove();}});
+  const tt=h("input",{type:"text",value:d.tieu_de,maxlength:"120",placeholder:"Ví dụ: Hạn chốt KPI tháng 11 là thứ 6, 28/11",oninput:e=>{d.tieu_de=e.target.value;}});
+  const nd=h("textarea",{placeholder:"Nội dung chi tiết (không bắt buộc)",style:"min-height:110px",oninput:e=>{d.noi_dung=e.target.value;}});nd.value=d.noi_dung||"";
+  const pv=h("select",{onchange:e=>{d.pham_vi=e.target.value;}},h("option",{value:"all"},"Cả đội"),S.pb.map(p=>h("option",{value:p.id},"Riêng "+p.ten)));pv.value=d.pham_vi||"all";
+  const gh=h("input",{type:"checkbox",checked:!!d.ghim,onchange:e=>{d.ghim=e.target.checked;}});let bad=false;
+  back.append(h("div",{class:"cv-modal",role:"dialog","aria-modal":"true","aria-label":"Đăng thông báo",style:"max-width:600px"},
+    h("div",{class:"cvm-head"},h("h3",{},n.id?"Sửa thông báo":"📢 Đăng thông báo"),h("button",{class:"g-x",type:"button","aria-label":"Đóng",onclick:()=>back.remove()},"×")),
+    h("div",{class:"cvm-body"},h("div",{class:"cvm-grid"},
+      h("label",{class:"field wide"},"Tiêu đề *",tt),h("label",{class:"field wide"},"Nội dung",nd),h("label",{class:"field"},"Gửi tới",pv),
+      h("label",{class:"field"},"Tự ẩn sau ngày (không bắt buộc)",dateBox(d.het_han,v=>{if(v===undefined){bad=true;return;}bad=false;d.het_han=v;},"Ngày hết hạn",false)),
+      h("label",{class:"bell-chk wide"},gh,"📌 Ghim lên đầu (luôn hiện nổi bật)"))),
+    h("div",{class:"cvm-foot"},h("span",{class:"spacer"}),h("button",{class:"ghost",type:"button",onclick:()=>back.remove()},"Hủy"),
+      h("button",{class:"btn",type:"button",onclick:async e=>{if(!d.tieu_de.trim()){toast("Nhập tiêu đề thông báo.");return;}if(bad){toast("Ngày hết hạn chưa đúng dạng dd/mm/yyyy.");return;}
+        const b=e.currentTarget;b.disabled=true;
+        try{await sbRpc("tb_save",{p:{id:n.id||null,tieu_de:d.tieu_de,noi_dung:d.noi_dung||"",pham_vi:d.pham_vi||"all",ghim:!!d.ghim,het_han:d.het_han||null}});
+          back.remove();toast(n.id?"Đã sửa thông báo.":`Đã đăng thông báo tới ${d.pham_vi==="all"?"cả đội":pbName(d.pham_vi)}.`);bellSoon();}
+        catch(err){b.disabled=false;toast(/tb_save|kpi_thong_bao/.test(String(err.message||""))?"Chưa có bảng thông báo. Admin chạy file thong_bao.sql trong Supabase.":errMsg(err));}}},n.id?"Lưu":"Đăng thông báo"))));
+  document.body.append(back);setTimeout(()=>tt.focus(),30);}
+
 /* ---------- lời chào theo buổi ---------- */
 function greetInfo(d){d=d||new Date();const m=d.getHours()*60+d.getMinutes(),wd=d.getDay(),dd=d.getDate(),mm=d.getMonth()+1;
   const p=m>=300&&m<660?"morning":m>=660&&m<810?"noon":m>=810&&m<1080?"afternoon":m>=1080&&m<1320?"evening":"night";
@@ -2218,6 +2381,7 @@ async function init(){
   document.querySelectorAll(".snow-tg").forEach(b=>b.addEventListener("click",()=>fxMenu(b)));
   setFx(fxPref(),false);
   loadWeather();setInterval(()=>loadWeather(),30*60e3);
+  setInterval(()=>{if(S.authMode&&S.me&&!S.gate)bellCompute().catch(()=>{});},5*60e3);
   setInterval(()=>{const el=document.getElementById("greet");if(!el)return;const g=greetInfo();
     if(!el.classList.contains("g-"+g.p)||el.querySelector(".g-txt span").textContent!==g.msg){const n=greetEl();if(n)el.replaceWith(n);else el.remove();}},60000);
   render();
