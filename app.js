@@ -2183,9 +2183,9 @@ function bellPush(){
   const fresh=(S.bell||[]).filter(i=>i.unread&&!done.has(i.id));
   fresh.forEach(i=>done.add(i.id));lsSet(bellKey("pushed"),JSON.stringify([...done].slice(-400)));
   if(first)return;   // lần đầu bật: không dội cả loạt thông báo cũ
-  fresh.slice(0,3).forEach(i=>{try{const n=new Notification(i.title,{body:(i.body||"").slice(0,160),icon:"icons/icon-192.png",tag:i.id});
+  fresh.slice(0,3).forEach(i=>{try{const n=new Notification(i.title,{body:(i.body||"").slice(0,160),icon:"icon-192.png",tag:i.id});
     n.onclick=()=>{window.focus();bellMarkRead([i.id]);if(i.go)i.go();bellSoon();n.close();};}catch(e){}});
-  if(fresh.length>3){try{new Notification(`EasySupport: ${fresh.length} thông báo mới`,{body:"Mở chuông 🔔 để xem tất cả.",icon:"icons/icon-192.png",tag:"bell-many"});}catch(e){}}}
+  if(fresh.length>3){try{new Notification(`EasySupport: ${fresh.length} thông báo mới`,{body:"Mở chuông 🔔 để xem tất cả.",icon:"icon-192.png",tag:"bell-many"});}catch(e){}}}
 function bellPanel(refresh){
   let pop=document.querySelector(".bell-pop");if(pop&&!refresh){pop.remove();return;}
   const btn=bellBtn();if(!btn)return;

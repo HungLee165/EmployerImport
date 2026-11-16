@@ -887,5 +887,6 @@ body{background:
 .logo-card{background:#fff;border-radius:14px;padding:3px;box-shadow:0 8px 22px -10px rgba(0,0,0,.55)}
 .logo-card img{display:block;width:100%;height:auto;border-radius:11px}
 .brand-img .b-sub{font-size:15.5px;font-weight:700;color:#fff;text-align:center;letter-spacing:.01em;line-height:1.3}
-.brand-full{aspect-ratio:640/164;max-width:300px;background:url(icons/logo-easysupport.webp) center/contain no-repeat;border-radius:12px}
+.brand-full{aspect-ratio:700/153;max-width:300px;background:url(logo-es.webp) left center/contain no-repeat}
+.brand-logo{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.28))}
 .auth-brand .small{font-size:14.5px;font-weight:600;color:var(--brand)}

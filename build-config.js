@@ -23,7 +23,8 @@ fs.writeFileSync(path.join(OUT, "health.json"), JSON.stringify({ app: "easysuppo
 // Bộ icon (favicon, icon điện thoại, ảnh chia sẻ link) trong thư mục "icons" → đưa ra thư mục gốc của web.
 // Tự tìm cả khi bị lồng thư mục (icons/icons/...). Lỗi ở bước này không làm hỏng cả lần build.
 const ICON_FILES = ["favicon.ico", "favicon-96x96.png", "apple-touch-icon.png", "icon-192.png",
-  "icon-512.png", "icon-maskable-512.png", "og-image.png", "site.webmanifest"];
+  "icon-512.png", "icon-maskable-512.png", "og-image.png", "site.webmanifest",
+  "logo-es.webp", "logo-es.png", "logo-es-toi.webp", "logo-es-toi.png"];
 try {
   const found = {};
   const walk = dir => {
@@ -51,6 +52,21 @@ const pick = (...names) => {
   }
   return null;
 };
+
+// Máy chủ Cloudflare (Workers + D1). Có biến này thì web dùng Cloudflare, bỏ qua Supabase.
+const api = pick("CF_API_URL", "EASYSUPPORT_API_URL");
+if (api) {
+  const v = api.value.replace(/\/+$/, "");
+  if (!/^https:\/\/.+/.test(v)) { console.error(`❌ ${api.name} phải bắt đầu bằng https:// (đang là: ${v}).`); process.exit(1); }
+  fs.writeFileSync(path.join(OUT, "config.js"),
+`// Tự tạo khi build trên Vercel từ ${api.name}. Đừng sửa tay.
+window.KPI_CONFIG = {
+  apiUrl: ${JSON.stringify(v)}
+};
+`);
+  console.log(`✅ Dùng máy chủ Cloudflare: ${v}`);
+  process.exit(0);
+}
 
 const url = pick("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
 const key = pick(
