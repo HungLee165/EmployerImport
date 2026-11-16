@@ -185,6 +185,7 @@ async function loadRemote(){
     S.schema=+j.schema||1;S.authMode=S.schema>=3;S.me=j.me||null;
     if(j.blocked)throw {code:"blocked"};
     j.needPin=!S.authMode;S.version=j.version||null;
+    if(S.authMode&&!USE_CF)await loadChot();
     if(S.schema>=5){applyKpiLoad(j);S.needUpgrade=false;S.needPin=false;S.lastSync=new Date();S.syncErr="";rebuild();return;}
     S.needUpgrade=true;}
   else{const res=await fetch(API+(API.includes("?")?"&":"?")+"action=load&t="+Date.now(),{cache:"no-store"});
@@ -262,7 +263,42 @@ function isMe(ma){return !!myMa()&&fold(myMa())===fold(ma||"");}
 /* Quản lý được nhân viên này: Admin = tất cả; Quản lý = phòng mình */
 function canManage(ma){if(!S.authMode)return isAdmin();if(isAdmin())return true;return isMgr()&&!!myPbId()&&nvPbId(ma)===myPbId();}
 /* Được nhập KPI cho nhân viên này: thêm Nhân viên = chính mình */
-function canEditKpi(ma){return canManage(ma)||(isStaff()&&isMe(ma));}
+function canEditKpi(ma,thang){if(kpiLock(ma,thang))return false;return canManage(ma)||(isStaff()&&isMe(ma));}
+/* ---------- chốt sổ KPI tháng ---------- */
+async function loadChot(){try{const rows=await sbFetch("/rest/v1/kpi_chot_so?select=*");const m={},p={};
+    (rows||[]).forEach(r=>{if(r.pham_vi==="ALL")m[r.thang]=r;else p[r.thang+"|"+r.pham_vi]=r;});S.chot={m,p};S.chotOk=true;}
+  catch(e){S.chot={m:{},p:{}};S.chotOk=false;}}
+const monthLocked=th=>!!(S.chotOk&&S.chot.m[th]&&S.chot.m[th].trang_thai);
+const pbConfirmed=(th,pb)=>!!(S.chotOk&&pb&&S.chot.p[th+"|"+pb]&&S.chot.p[th+"|"+pb].trang_thai);
+function kpiLock(ma,thang){if(!S.chotOk)return null;const th=thang||(S.ent&&S.ent.thang)||S.month;
+  if(monthLocked(th))return "thang";if(pbConfirmed(th,nvPbId(ma))&&!canManage(ma))return "pb";return null;}
+const fmtWhen=t=>new Date(t).toLocaleString("vi-VN",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"});
+function chotBar(th){
+  if(!S.chotOk||!S.authMode)return null;
+  const adm=isAdmin(),mgr=isMgr()&&!adm,myPb=myPbId(),L=monthLabel(th);
+  const act=async(fn,msg)=>{try{S.busy=true;await fn();await loadChot();S.ent=null;toast(msg);render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}};
+  if(monthLocked(th)){const c=S.chot.m[th];
+    return h("div",{class:"panel chot-bar locked"},h("div",{class:"cb-main"},h("span",{class:"cb-ic"},"🔒"),
+      h("div",{},h("strong",{},`${L} đã chốt sổ`),h("div",{class:"small muted"},`Chốt bởi ${c.boi||"Admin"} lúc ${fmtWhen(c.luc)}. Số liệu chỉ xem, không sửa được.`))),
+      adm?h("button",{class:"ghost",type:"button",onclick:()=>{const ly=prompt(`Lý do mở lại ${L.toLowerCase()} (bắt buộc, sẽ ghi vào nhật ký):`);if(ly===null)return;if(!ly.trim()){toast("Cần ghi lý do mở lại.");return;}
+        act(()=>sbRpc("kpi_chot_thang",{p_thang:th,p_chot:false,p_ly_do:ly.trim()}),`Đã mở lại ${L.toLowerCase()}.`);}},"🔓 Mở lại tháng"):null);}
+  const list=S.pb.map(p=>({p,ok:pbConfirmed(th,p.id),c:S.chot.p[th+"|"+p.id],has:[...S.kpi.values()].some(r=>r.thang===th&&nvPbId(r.ma)===p.id)}));
+  const done=list.filter(x=>x.ok).length;
+  const chips=h("div",{class:"cb-chips"},list.map(x=>h("span",{class:"chip "+(x.ok?"ok":x.has?"warn":""),title:x.ok?`Xác nhận bởi ${x.c.boi} lúc ${fmtWhen(x.c.luc)}`:x.has?"Chưa xác nhận":"Chưa có số liệu"},(x.ok?"✓ ":"○ ")+x.p.ten)));
+  const acts=h("div",{class:"cb-acts"});
+  if(mgr&&myPb){const ok=pbConfirmed(th,myPb);
+    acts.append(h("button",{class:ok?"ghost":"btn",type:"button",onclick:()=>{
+      if(!ok&&!confirm(`Xác nhận số liệu ${L.toLowerCase()} của phòng ${pbName(myPb)} là đúng? Sau khi xác nhận, nhân viên phòng không tự sửa được nữa.`))return;
+      act(()=>sbRpc("kpi_xac_nhan_pb",{p_thang:th,p_pb:myPb,p_xac_nhan:!ok}),ok?"Đã hủy xác nhận, nhân viên sửa lại được.":"Đã xác nhận số liệu phòng.");}},ok?"Hủy xác nhận":"✅ Xác nhận số liệu phòng"));}
+  if(adm){acts.append(h("button",{class:"btn",type:"button",onclick:()=>{
+      const miss=list.filter(x=>!x.ok).map(x=>x.p.ten);
+      if(!confirm(`Chốt sổ ${L.toLowerCase()}?`+(miss.length?`\n\nCòn ${miss.length} phòng chưa xác nhận: ${miss.join(", ")}.`:"\n\nTất cả phòng đã xác nhận.")+"\n\nSau khi chốt, không ai sửa được số liệu tháng này (kể cả Admin) cho tới khi mở lại."))return;
+      act(()=>sbRpc("kpi_chot_thang",{p_thang:th,p_chot:true,p_ly_do:""}),`Đã chốt sổ ${L.toLowerCase()}.`);}},"🔒 Chốt tháng"));}
+  const myLock=isStaff()&&myMa()&&pbConfirmed(th,nvPbId(myMa()));
+  return h("div",{class:"panel chot-bar"},h("div",{class:"cb-main"},h("span",{class:"cb-ic"},"📝"),
+      h("div",{},h("strong",{},`Xác nhận số liệu ${L.toLowerCase()}: ${done}/${list.length} phòng`),
+        h("div",{class:"small muted"},myLock?"Phòng bạn đã xác nhận số liệu, bạn không tự sửa được nữa. Cần sửa thì nhờ Quản lý hủy xác nhận.":
+          adm?"Quản lý xác nhận số liệu phòng mình, sau đó Admin chốt tháng để khóa số liệu.":"Nhập đủ rồi thì Quản lý bấm xác nhận; Admin sẽ chốt tháng sau đó."))),chips,acts);}
 function meRoleText(){if(!S.me)return "";const r=roleLabel(S.me.vai_tro);if(isMgr())return r+(myPbId()?", "+(pbName(myPbId())||"?"):", chưa gán phòng");return r;}
 function guard(e){if(e&&e.code==="invalid_argument")S.canWrite=false;}
 async function writeDays(list){
@@ -286,6 +322,9 @@ function errMsg(e){
   if(/chi_quan_ly_danh_gia/.test(raw))return "Chỉ Quản lý phòng hoặc Admin mới đánh giá được.";
   if(/chi_nguoi_duoc_giao_tu_danh_gia/.test(raw))return "Chỉ người được giao việc mới tự đánh giá được.";
   if(/last_admin/.test(raw))return "Phải còn ít nhất 1 Admin, không hạ quyền Admin cuối cùng được.";
+  {const mm=raw.match(/thang_da_chot:(\d{4})-(\d{2})/);if(mm)return `Tháng ${+mm[2]}/${mm[1]} đã chốt sổ, không sửa được. Cần sửa thì nhờ Admin mở lại tháng.`;}
+  if(/phong_da_xac_nhan/.test(raw))return "Phòng bạn đã xác nhận số liệu tháng này. Cần sửa thì nhờ Quản lý hủy xác nhận.";
+  if(/can_ly_do/.test(raw))return "Cần ghi lý do khi mở lại tháng đã chốt.";
   if(/thieu_tieu_de/.test(raw))return "Nhập tiêu đề thông báo.";
   if(/khong_co_quyen_pb/.test(raw))return "Bạn chỉ thao tác được dữ liệu và công việc của phòng ban mình phụ trách.";
   if(/chi_admin_cap_nhat_tien_do/.test(raw))return "Chỉ Admin mới cập nhật tiến độ và kết quả công việc.";
@@ -687,6 +726,8 @@ function viewTongHop(){
   const k=S.month,pb=S.thPb||"",q=fold(S.search||"");
   const rowsAll=monthRows(k,pb),rows=rowsAll.filter(r=>!q||fold(r.ten).includes(q)||fold(r.ma).includes(q));
   const T=agg(rowsAll),TP=agg(monthRows(shiftMonth(k,-1),pb)),TY=agg(monthRows(shiftMonth(k,-12),pb));
+  if(S.chotOk&&rowsAll.length)out.append(monthLocked(k)?h("div",{class:"chot-tag ok"},`🔒 Số liệu ${monthLabel(k).toLowerCase()} đã chốt sổ (${S.chot.m[k].boi||"Admin"}, ${fmtWhen(S.chot.m[k].luc)})`)
+    :h("div",{class:"chot-tag warn"},`✏️ Số liệu tạm: ${monthLabel(k).toLowerCase()} chưa chốt sổ, có thể còn thay đổi`));
   out.append(h("div",{class:"row"},monthBar(v=>{S.month=v;render();}),deptSelect(pb,v=>{S.thPb=v;render();}),h("span",{class:"spacer"}),
     h("button",{class:"ghost",type:"button",onclick:()=>exportTongHop(k,pb)},"⬇ Tải Excel")));
   if(!rowsAll.length){out.append(h("div",{class:"panel empty"},h("div",{class:"big-emoji"},"📭"),h("h2",{},monthLabel(k)+" chưa có số liệu"),
@@ -888,6 +929,7 @@ function viewNhap(){
   out.append(h("div",{class:"row"},h("span",{class:"spacer"}),seg([["tay","Nhập tay"],["tep","Tải tệp Excel"],["dan","Dán từ Sheets"]],S.nhapMode,k=>{S.nhapMode=k;S.imp=null;render();},"Cách nhập")));
   if(!writable())out.append(h("p",{class:"banner"},"Tài khoản này chỉ có quyền xem."));
   if(!S.nv.length){out.append(setupChecklist()||h("div"));return out;}
+  {const cb=chotBar(S.month);if(cb)out.append(cb);}
   if(S.nhapMode==="tay")out.append(viewEnt());else if(S.imp)out.append(viewImpPreview());else out.append(viewImport());
   return out;}
 function viewEnt(){
@@ -939,12 +981,12 @@ function viewEnt(){
   out.append(h("div",{class:"panel"},h("div",{class:"scroll"},table),
     h("p",{class:"hint",style:"margin-top:10px"},"Chỉ cần nhập số lượng từng dịch vụ, ngày nghỉ và giờ trực. KPI tháng, công thực tế, TB/ngày và kết quả tự tính. Mục tiêu (case/ngày) tự điền theo tháng trước của người đó, chưa có thì theo KPI chuẩn phòng ban; Quản lý sửa được từng người.")));
   if(!ro)out.append(h("div",{class:"savebar"},h("div",{class:"progress",id:"ent-sum"}),
-    !isAdmin()&&isMgr()&&myPbId()&&E.rows.some(r=>r.exists&&nvPbId(r.ma)===myPbId())?h("button",{class:"ghost danger",type:"button",onclick:async()=>{
+    !monthLocked(E.thang)&&!isAdmin()&&isMgr()&&myPbId()&&E.rows.some(r=>r.exists&&nvPbId(r.ma)===myPbId())?h("button",{class:"ghost danger",type:"button",onclick:async()=>{
       if(!confirm(`Xóa toàn bộ số liệu ${monthLabel(E.thang).toLowerCase()} của phòng ${pbName(myPbId())}? Thao tác này không hoàn tác được (vẫn khôi phục được từ Nhật ký thay đổi trong Supabase).`))return;
       try{S.busy=true;const n=await sbRpc("kpi_delete_kpi_pb",{p_thang:E.thang,p_pb:myPbId()});
         for(const [k,r] of [...S.kpi.entries()])if(r.thang===E.thang&&nvPbId(r.ma)===myPbId())S.kpi.delete(k);
         lsDel("kpi:draft3:"+E.thang);rebuild();S.ent=null;toast(`Đã xóa ${n} dòng của phòng ${pbName(myPbId())}.`);render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},"Xóa tháng của phòng"):null,
-    isAdmin()&&E.rows.some(r=>r.exists)?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!E.confirmDel){E.confirmDel=true;render();return;}
+    !monthLocked(E.thang)&&isAdmin()&&E.rows.some(r=>r.exists)?h("button",{class:"ghost danger",type:"button",onclick:async()=>{if(!E.confirmDel){E.confirmDel=true;render();return;}
       try{S.busy=true;await sbRpc("kpi_delete_kpi",{p_thang:E.thang,p_ma_nv:null});for(const k of [...S.kpi.keys()])if(k.startsWith(E.thang+"|"))S.kpi.delete(k);
         lsDel("kpi:draft3:"+E.thang);rebuild();S.ent=null;toast("Đã xóa số liệu "+monthLabel(E.thang).toLowerCase()+".");render();}catch(e){toast(errMsg(e));}finally{S.busy=false;}}},E.confirmDel?"Bấm lần nữa để xóa cả tháng":"Xóa cả tháng"):null,
     h("button",{class:"btn",type:"button",disabled:E.saving,onclick:saveEnt},E.saving?"Đang lưu…":"Lưu "+monthLabel(E.thang).toLowerCase())));
@@ -1776,6 +1818,11 @@ const HELP=[
   ["h","Tải file Excel hoặc dán từ Google Sheets"],
   ["steps",["Chọn **Tải tệp Excel** (hoặc **Dán từ Sheets**), bấm **⬇ Tải file mẫu** nếu cần.","Chọn file, bấm **Đọc tệp**, kiểm tra phần ghép cột.","Bấm **Lưu … dòng**. Cột không ghép thì giữ nguyên số cũ."]],
   ["tip","Mỗi dịch vụ chỉ hiện ở phòng ban phụ trách nó (Admin chọn trong Danh mục → Phòng ban). Ô có dấu “–” là dịch vụ phòng đó không làm."]]},
+ {id:"chotso",ic:"🔒",t:"Chốt sổ KPI tháng",r:ALL,b:[
+  ["table",["Bước","Ai làm","Điều gì xảy ra"],[["1. Nhập số liệu","Mọi người","Nhập, sửa bình thường"],["2. Xác nhận số liệu phòng","Quản lý","Nhân viên phòng đó không tự sửa được nữa; Quản lý vẫn sửa được và có thể hủy xác nhận"],
+    ["3. Chốt tháng","Admin","Khóa toàn bộ số liệu tháng, kể cả Admin; báo cáo hiện nhãn **Đã chốt sổ**"],["Mở lại tháng","Admin","Bắt buộc ghi lý do; mọi lần chốt và mở lại đều được ghi nhật ký"]]],
+  ["p","Thanh **Xác nhận số liệu** ở đầu màn Nhập KPI tháng cho biết bao nhiêu phòng đã xác nhận. Trang Tổng hợp ghi rõ **Đã chốt sổ** hay **Số liệu tạm**."],
+  ["tip","Chuông 🔔 nhắc Quản lý xác nhận vào cuối tháng, và nhắc Admin chốt sổ tháng trước trong 10 ngày đầu tháng."]]},
  {id:"baocaokpi",ic:"📊",t:"Xem báo cáo KPI",r:ALL,b:[
   ["ul",["**Tổng hợp KPI:** khung tóm tắt tháng, các ô số liệu, **🏆 Xuất sắc** và **🤝 Cần hỗ trợ** (xếp theo % so với mục tiêu), sinh nhật trong tháng, bảng chi tiết theo phòng ban, nút **⬇ Tải Excel**.",
    "**Theo phòng ban:** KPI trung bình chung của từng phòng theo tháng, so sánh nhân viên trong phòng, diễn biến từng người.",
@@ -2073,6 +2120,14 @@ async function bellCompute(){
   }
   if((adm||mgr)&&early&&!(S.cong&&S.cong.override&&S.cong.override[th]!=null))
     add("kpi",`kpi-cong-${th}`,"📅","info",`${monthLabel(th)} chưa nhập công chuẩn`,`Đang dùng mặc định ${(S.cong&&S.cong.macdinh)||24} công. ${adm?"Bấm để nhập.":"Nhắc Admin nhập."}`,goEntry(th));
+  if(S.chotOk){
+    const cm=day>=last-2?th:(day<=10?pv:null);
+    if(cm&&!monthLocked(cm)){
+      if(mgr&&myPb&&!pbConfirmed(cm,myPb)&&[...S.kpi.values()].some(r=>r.thang===cm&&nvPbId(r.ma)===myPb))
+        add("kpi",`chot-xn-${myPb}-${cm}`,"📝","warn",`Phòng bạn chưa xác nhận số liệu ${monthLabel(cm).toLowerCase()}`,"Kiểm tra lại rồi bấm Xác nhận số liệu phòng.",goEntry(cm));
+      if(adm&&cm===pv){const n=S.pb.filter(p=>pbConfirmed(pv,p.id)).length;
+        add("kpi",`chot-thang-${pv}-${n}`,"🔒",n===S.pb.length?"info":"warn",n===S.pb.length?`Tất cả phòng đã xác nhận ${monthLabel(pv).toLowerCase()}, có thể chốt sổ`:`${monthLabel(pv)} chưa chốt sổ (${n}/${S.pb.length} phòng đã xác nhận)`,
+          "Bấm để mở màn Nhập KPI và chốt tháng.",goEntry(pv));}}}
   /* ---------- ✅ Nhắc công việc ---------- */
   if((adm||mgr)&&!cvNeedUpgrade()){
     try{
