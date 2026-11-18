@@ -1461,11 +1461,23 @@ function viewAccounts(){
       .catch(e=>{S.membersErr=errMsg(e);}).finally(()=>{S.membersLoading=false;if(S.view==="taikhoan"&&!S.gate)render();});}
   const out=h("div",{class:"stack"});
   out.append(h("div",{class:"panel"},h("div",{class:"panel-head"},h("h3",{},"Phân quyền")),
-    h("div",{class:"scroll"},h("table",{class:"grid perm-tbl"},h("thead",{},h("tr",{},h("th",{class:"l"},"Việc"),h("th",{},"Admin"),h("th",{},"Quản lý"),h("th",{},"Nhân viên"))),
-      h("tbody",{},[["Xem báo cáo KPI và công việc","Toàn đội","Toàn đội","Toàn đội"],["Nhập, sửa KPI tháng","Toàn đội","Phòng mình","Của mình"],
-        ["Sửa mục tiêu KPI","Toàn đội","Phòng mình","–"],["Sửa thông tin nhân viên","Toàn đội","Phòng mình (trừ phòng ban, chức vụ)","–"],
-        ["Kế hoạch, giao việc, đánh giá","Toàn đội","Phòng mình","Cập nhật việc của mình"],["Tài khoản, danh mục, cấu hình, xóa tháng","✅","–","–"]]
-        .map(r=>h("tr",{},r.map((c,i)=>h("td",{class:i?"c":"l"},c))))))),
+    h("div",{class:"scroll"},h("table",{class:"grid perm-tbl"},
+      h("colgroup",{},h("col",{class:"pc-viec"}),h("col",{}),h("col",{}),h("col",{})),
+      h("thead",{},h("tr",{},h("th",{class:"l"},"Việc"),h("th",{class:"c"},"👑 Admin"),h("th",{class:"c"},"🧭 Quản lý"),h("th",{class:"c"},"👤 Nhân viên"))),
+      h("tbody",{},[["Xem báo cáo KPI, công việc, thống kê","all","all","all"],
+        ["Nhập, sửa KPI tháng","all","pb","me|tới khi phòng xác nhận"],
+        ["Sửa mục tiêu KPI","all","pb","-"],
+        ["Thêm, sửa nhân viên","all","pb|thêm vào phòng mình; không sửa mã, phòng ban, chức vụ","-"],
+        ["Xác nhận số liệu tháng","all","pb","-"],
+        ["Xóa KPI cả tháng","all","pb","-"],
+        ["Chốt sổ và mở lại tháng","yes","-","-"],
+        ["Lập kế hoạch, giao việc, đánh giá công việc","all","pb","-"],
+        ["Cập nhật tiến độ, kết quả công việc","yes","-","-"],
+        ["Đăng thông báo chung","yes","-","-"],
+        ["Tài khoản, danh mục, cấu hình","yes","pb|chỉ chọn phòng phụ trách của mình","-"]]
+        .map(r=>h("tr",{},h("td",{class:"l perm-viec"},r[0]),r.slice(1).map(v=>{const [k,note]=v.split("|");
+          const lab={all:"Toàn đội",pb:"Phòng mình",me:"Của mình",yes:"Có","-":"–"}[k];
+          return h("td",{class:"c"},h("span",{class:"perm-v "+({"-":"no"}[k]||k)},lab),note?h("div",{class:"perm-note"},note):null);})))))),
     h("p",{class:"hint",style:"margin-top:10px"},"Mỗi tài khoản cần gắn đúng Mã NV. Quản lý tự chọn được phòng phụ trách của mình (mục Tài khoản), Admin cũng có thể chọn giúp ở bảng dưới. Mọi lần đổi đều ghi vào Nhật ký đổi quyền cuối trang. Người mới đăng ký hiện ở dòng màu vàng.")));
   if(S.membersErr)out.append(h("p",{class:"banner"},S.membersErr));
   if(!S.members){out.append(h("p",{class:"muted"},"Đang tải danh sách…"));return out;}
